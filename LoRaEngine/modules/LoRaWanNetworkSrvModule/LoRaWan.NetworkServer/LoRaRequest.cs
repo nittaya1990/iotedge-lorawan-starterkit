@@ -13,7 +13,7 @@ namespace LoRaWan.NetworkServer
     {
         public virtual Rxpk Rxpk { get; }
 
-        public virtual LoRaPayload Payload { get; private set; }
+        public virtual LoRaPayload Payload { get; set; }
 
         public virtual IPacketForwarder PacketForwarder { get; }
 

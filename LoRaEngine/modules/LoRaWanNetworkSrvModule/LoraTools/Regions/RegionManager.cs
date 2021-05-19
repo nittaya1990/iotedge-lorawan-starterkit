@@ -101,7 +101,7 @@ namespace LoRaTools.Regions
                 64,
                 32,
                 (min: 1, max: 3));
-            eu868.DRtoConfiguration.Add(0, (configuration: "SF12BW125", maxPyldSize: 59));
+            eu868.DRtoConfiguration.Add(0, (configuration: new DR { SF = 12, BW = 125} "SF12BW125", maxPyldSize: 59));
             eu868.DRtoConfiguration.Add(1, (configuration: "SF11BW125", maxPyldSize: 59));
             eu868.DRtoConfiguration.Add(2, (configuration: "SF10BW125", maxPyldSize: 59));
             eu868.DRtoConfiguration.Add(3, (configuration: "SF9BW125", maxPyldSize: 123));

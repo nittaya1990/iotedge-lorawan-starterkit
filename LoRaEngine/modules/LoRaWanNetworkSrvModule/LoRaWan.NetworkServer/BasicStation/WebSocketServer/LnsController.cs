@@ -11,6 +11,7 @@ namespace LoRaWan.NetworkServer.BasicStation.WebSocketServer
     using System.Text.Json;
     using System.Threading;
     using System.Threading.Tasks;
+    using LoRaTools.LoRaMessage;
     using LoRaWan.NetworkServer.BasicStation.Models;
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.Extensions.Logging;
@@ -153,7 +154,10 @@ namespace LoRaWan.NetworkServer.BasicStation.WebSocketServer
                         case nameof(LbsMessageType.Updf):
                             var lnsDataFrame = JsonSerializer.Deserialize<LnsDataFrameRequest>(input);
                             this.logger.Log(LogLevel.Debug, "Received a message");
-                            this.messageDispatcher.DispatchLoRaDataMessage(new LoRaRequest());
+                            this.messageDispatcher.DispatchLoRaDataMessage(new LoRaRequest()
+                            {
+                                Payload = new LoRaPayloadData(lnsDataFrame.Mhdr, lnsDataFrame.DevAddr, lnsDataFrame.Fctrl, lnsDataFrame.Fcnt, lnsDataFrame.Fopts, lnsDataFrame.Fport, lnsDataFrame.FrmPayload, lnsDataFrame.Mic)
+                            });
                             break;
 
                         case nameof(LbsMessageType.Jreq):
