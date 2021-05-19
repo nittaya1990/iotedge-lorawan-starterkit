@@ -159,7 +159,7 @@ namespace LoRaWan.NetworkServer.BasicStation.WebSocketServer
                         case nameof(LbsMessageType.Jreq):
 
                             break;
-                    }
+                        }
 
                     result = await socket.ReceiveAsync(buffer, CancellationToken.None);
                 }
