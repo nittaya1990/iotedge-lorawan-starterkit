@@ -1,9 +1,8 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace LoRaTools
 {
-    using System;
     using System.Collections.Generic;
     using Newtonsoft.Json;
 
@@ -17,7 +16,8 @@ namespace LoRaTools
 
         public override int Length => 2;
 
-        public int GetDelay() => this.Settings & 0b00001111;
+        [JsonIgnore]
+        public int Delay => Settings & 0b00001111;
 
         public RXTimingSetupRequest()
         {
@@ -25,19 +25,19 @@ namespace LoRaTools
 
         public RXTimingSetupRequest(byte delay)
         {
-            this.Cid = CidEnum.RXTimingCmd;
-            this.Settings |= delay;
+            Cid = Cid.RXTimingCmd;
+            Settings |= delay;
         }
 
         public override IEnumerable<byte> ToBytes()
         {
-            yield return (byte)this.Settings;
-            yield return (byte)this.Cid;
+            yield return (byte)Cid;
+            yield return Settings;
         }
 
         public override string ToString()
         {
-            return $"Type: {this.Cid} Answer, delay: {this.GetDelay()}";
+            return $"Type: {Cid} Answer, delay: {Delay}";
         }
     }
 }

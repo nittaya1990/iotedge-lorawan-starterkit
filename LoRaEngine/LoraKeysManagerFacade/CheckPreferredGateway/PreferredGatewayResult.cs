@@ -1,17 +1,16 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace LoraKeysManagerFacade
 {
     using Newtonsoft.Json;
+    using System;
 
     /// <summary>
     /// Defines a preferred gateway result.
     /// </summary>
     public class PreferredGatewayResult
     {
-        public string DevEUI { get; }
-
         public uint RequestFcntUp { get; }
 
         [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
@@ -36,20 +35,20 @@ namespace LoraKeysManagerFacade
         {
         }
 
-        public PreferredGatewayResult(string devEUI, uint fcntUp, LoRaDevicePreferredGateway preferredGateway)
+        public PreferredGatewayResult(uint fcntUp, LoRaDevicePreferredGateway preferredGateway)
         {
-            this.DevEUI = devEUI;
-            this.RequestFcntUp = fcntUp;
-            this.CurrentFcntUp = preferredGateway.FcntUp;
-            this.PreferredGatewayID = preferredGateway.GatewayID;
-            this.Conflict = fcntUp != preferredGateway.FcntUp;
+            if (preferredGateway is null) throw new ArgumentNullException(nameof(preferredGateway));
+
+            RequestFcntUp = fcntUp;
+            CurrentFcntUp = preferredGateway.FcntUp;
+            PreferredGatewayID = preferredGateway.GatewayID;
+            Conflict = fcntUp != preferredGateway.FcntUp;
         }
 
-        public PreferredGatewayResult(string devEUI, uint fcntUp, string errorMessage)
+        public PreferredGatewayResult(uint fcntUp, string errorMessage)
         {
-            this.DevEUI = devEUI;
-            this.RequestFcntUp = fcntUp;
-            this.ErrorMessage = errorMessage;
+            RequestFcntUp = fcntUp;
+            ErrorMessage = errorMessage;
         }
     }
 }

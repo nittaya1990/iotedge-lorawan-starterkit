@@ -5,6 +5,7 @@ namespace LoraKeysManagerFacade.FunctionBundler
 {
     using System.Collections.Generic;
     using System.Threading.Tasks;
+    using LoRaWan;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Logging.Abstractions;
 
@@ -12,7 +13,7 @@ namespace LoraKeysManagerFacade.FunctionBundler
     {
         private readonly IFunctionBundlerExecutionItem[] registeredHandlers;
 
-        public string DevEUI { get; private set; }
+        public DevEui DevEUI { get; private set; }
 
         public FunctionBundlerRequest Request { get; private set; }
 
@@ -20,16 +21,15 @@ namespace LoraKeysManagerFacade.FunctionBundler
 
         public ILogger Logger { get; private set; }
 
-        public FunctionBundlerPipelineExecuter(
-                                               IFunctionBundlerExecutionItem[] registeredHandlers,
-                                               string devEUI,
+        public FunctionBundlerPipelineExecuter(IFunctionBundlerExecutionItem[] registeredHandlers,
+                                               DevEui devEUI,
                                                FunctionBundlerRequest request,
                                                ILogger logger = null)
         {
             this.registeredHandlers = registeredHandlers;
-            this.DevEUI = devEUI;
-            this.Request = request;
-            this.Logger = logger ?? NullLogger.Instance;
+            DevEUI = devEUI;
+            Request = request;
+            Logger = logger ?? NullLogger.Instance;
         }
 
         public async Task<FunctionBundlerResult> Execute()
@@ -38,7 +38,7 @@ namespace LoraKeysManagerFacade.FunctionBundler
             for (var i = 0; i < this.registeredHandlers.Length; i++)
             {
                 var handler = this.registeredHandlers[i];
-                if (handler.NeedsToExecute(this.Request.FunctionItems))
+                if (handler.NeedsToExecute(Request.FunctionItems))
                 {
                     executionPipeline.Add(handler);
                 }
@@ -57,10 +57,13 @@ namespace LoraKeysManagerFacade.FunctionBundler
                     case FunctionBundlerExecutionState.Abort:
                         await handler.OnAbortExecutionAsync(this);
                         break;
+                    case FunctionBundlerExecutionState.None:
+                    default:
+                        break;
                 }
             }
 
-            return this.Result;
+            return Result;
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace LoRaTools.ADR
@@ -12,11 +12,13 @@ namespace LoRaTools.ADR
     {
         private readonly ILoRaADRStore store;
         private readonly ILoRaADRStrategyProvider strategyProvider;
+        private readonly ILogger<LoRaADRManagerBase> logger;
 
-        public LoRaADRManagerBase(ILoRaADRStore store, ILoRaADRStrategyProvider strategyProvider)
+        public LoRaADRManagerBase(ILoRaADRStore store, ILoRaADRStrategyProvider strategyProvider, ILogger<LoRaADRManagerBase> logger)
         {
             this.store = store;
             this.strategyProvider = strategyProvider;
+            this.logger = logger;
         }
 
         protected virtual void UpdateState(LoRaADRResult loRaADRResult)
@@ -30,16 +32,15 @@ namespace LoRaTools.ADR
                 return;
             }
 
-            if (string.IsNullOrEmpty(newEntry.DevEUI) ||
-               string.IsNullOrEmpty(newEntry.GatewayId))
+            if (!newEntry.DevEUI.IsValid || string.IsNullOrEmpty(newEntry.GatewayId))
             {
-                throw new ArgumentException("Missing DevEUI or GatewayId");
+                throw new ArgumentException("Missing Gateway ID or invalid DevEUI");
             }
 
-            await this.store.AddTableEntry(newEntry);
+            _ = await this.store.AddTableEntry(newEntry);
         }
 
-        public virtual async Task<LoRaADRResult> CalculateADRResultAndAddEntryAsync(string devEUI, string gatewayId, uint fCntUp, uint fCntDown, float requiredSnr, int upstreamDataRate, int minTxPower, int maxDr, LoRaADRTableEntry newEntry = null)
+        public virtual async Task<LoRaADRResult> CalculateADRResultAndAddEntryAsync(DevEui devEUI, string gatewayId, uint fCntUp, uint fCntDown, float requiredSnr, DataRateIndex dataRate, int minTxPower, DataRateIndex maxDr, LoRaADRTableEntry newEntry = null)
         {
             var table = newEntry != null
                         ? await this.store.AddTableEntry(newEntry)
@@ -47,7 +48,7 @@ namespace LoRaTools.ADR
 
             var currentStrategy = this.strategyProvider.GetStrategy();
 
-            var result = currentStrategy.ComputeResult(devEUI, table, requiredSnr, upstreamDataRate, minTxPower, maxDr);
+            var result = currentStrategy.ComputeResult(table, requiredSnr, dataRate, minTxPower, maxDr);
 
             if (result == null)
             {
@@ -57,46 +58,41 @@ namespace LoRaTools.ADR
                     || !table.CurrentTxPower.HasValue
                     || fCntUp > currentStrategy.MinimumNumberOfResult)
                 {
-                    result = this.ReturnDefaultValues(upstreamDataRate, currentStrategy.DefaultNbRep, currentStrategy.DefaultTxPower);
+                    result = ReturnDefaultValues(dataRate, currentStrategy.DefaultNbRep, currentStrategy.DefaultTxPower);
                 }
                 else
                 {
-                    result = await this.GetLastResultAsync(devEUI) ?? new LoRaADRResult();
+                    result = await GetLastResultAsync(devEUI) ?? new LoRaADRResult();
                     result.NumberOfFrames = table.Entries.Count;
                     return result;
                 }
             }
 
-            var nextFcntDown = await this.NextFCntDown(devEUI, gatewayId, fCntUp, fCntDown);
+            var nextFcntDown = await NextFCntDown(devEUI, gatewayId, fCntUp, fCntDown);
             result.CanConfirmToDevice = nextFcntDown > 0;
 
             if (result.CanConfirmToDevice)
             {
-                if (table == null)
-                {
-                    // in a reset case, we may not have a table, but still want to store the default
-                    // values that we sent to the client
-                    table = new LoRaADRTable();
-                }
+                table ??= new LoRaADRTable();
 
                 table.CurrentNbRep = result.NbRepetition;
                 table.CurrentTxPower = result.TxPower;
                 await this.store.UpdateADRTable(devEUI, table);
-                this.UpdateState(result);
+                UpdateState(result);
                 result.FCntDown = nextFcntDown;
             }
 
             result.NumberOfFrames = table.Entries.Count;
-            Logger.Log(devEUI, $"calculated ADR: CanConfirmToDevice: {result.CanConfirmToDevice}, TxPower: {result.TxPower}, DataRate: {result.DataRate}", LogLevel.Debug);
+            this.logger.LogDebug($"calculated ADR: CanConfirmToDevice: {result.CanConfirmToDevice}, TxPower: {result.TxPower}, DataRate: {result.DataRate}");
             return result;
         }
 
-        public virtual Task<uint> NextFCntDown(string devEUI, string gatewayId, uint clientFCntUp, uint clientFCntDown)
+        public virtual Task<uint> NextFCntDown(DevEui devEUI, string gatewayId, uint clientFCntUp, uint clientFCntDown)
         {
             return Task.FromResult<uint>(0);
         }
 
-        public virtual async Task<LoRaADRResult> GetLastResultAsync(string devEUI)
+        public virtual async Task<LoRaADRResult> GetLastResultAsync(DevEui devEUI)
         {
             var table = await this.store.GetADRTable(devEUI);
 
@@ -110,18 +106,18 @@ namespace LoRaTools.ADR
                 : null;
         }
 
-        public virtual async Task<LoRaADRTableEntry> GetLastEntryAsync(string devEUI)
+        public virtual async Task<LoRaADRTableEntry> GetLastEntryAsync(DevEui devEUI)
         {
             var table = await this.store.GetADRTable(devEUI);
             return table != null && table.Entries.Count > 0 ? table.Entries[table.Entries.Count - 1] : null;
         }
 
-        public virtual async Task<bool> ResetAsync(string devEUI)
+        public virtual async Task<bool> ResetAsync(DevEui devEUI)
         {
             return await this.store.Reset(devEUI);
         }
 
-        private LoRaADRResult ReturnDefaultValues(int upstreamDataRate, int defaultNbRep, int maxTxPowerIndex)
+        private static LoRaADRResult ReturnDefaultValues(DataRateIndex upstreamDataRate, int defaultNbRep, int maxTxPowerIndex)
         {
             return new LoRaADRResult
             {

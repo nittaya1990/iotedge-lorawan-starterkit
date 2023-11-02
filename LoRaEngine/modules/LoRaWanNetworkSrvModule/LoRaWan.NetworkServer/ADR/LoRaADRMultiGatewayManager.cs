@@ -1,9 +1,8 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace LoRaWan.NetworkServer.ADR
 {
-    using System;
     using System.Threading.Tasks;
     using LoRaTools.ADR;
     using Microsoft.Extensions.Logging;
@@ -12,13 +11,13 @@ namespace LoRaWan.NetworkServer.ADR
     {
         private readonly LoRaDeviceAPIServiceBase deviceApi;
 
-        public LoRaADRMultiGatewayManager(LoRaDevice loRaDevice, LoRaDeviceAPIServiceBase deviceApi)
-            : base(null, null, null, loRaDevice)
+        public LoRaADRMultiGatewayManager(LoRaDevice loRaDevice, LoRaDeviceAPIServiceBase deviceApi, ILogger<LoRaADRMultiGatewayManager> logger)
+            : base(null, null, null, loRaDevice, logger)
         {
             this.deviceApi = deviceApi;
         }
 
-        public override Task<bool> ResetAsync(string devEUI)
+        public override Task<bool> ResetAsync(DevEui devEUI)
         {
             // needs to be called on the function bundler
             return Task.FromResult<bool>(false);
@@ -30,7 +29,7 @@ namespace LoRaWan.NetworkServer.ADR
             return Task.CompletedTask;
         }
 
-        public override Task<LoRaADRResult> CalculateADRResultAndAddEntryAsync(string devEUI, string gatewayId, uint fCntUp, uint fCntDown, float requiredSnr, int upstreamDataRate, int minTxPower, int maxDr, LoRaADRTableEntry newEntry = null)
+        public override Task<LoRaADRResult> CalculateADRResultAndAddEntryAsync(DevEui devEUI, string gatewayId, uint fCntUp, uint fCntDown, float requiredSnr, DataRateIndex dataRate, int minTxPower, DataRateIndex maxDr, LoRaADRTableEntry newEntry = null)
         {
             return Task.FromResult<LoRaADRResult>(null);
         }

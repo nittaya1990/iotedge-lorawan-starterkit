@@ -3,6 +3,7 @@
 
 namespace LoraKeysManagerFacade
 {
+    using LoRaWan;
     using Newtonsoft.Json;
 
     /// <summary>
@@ -10,15 +11,18 @@ namespace LoraKeysManagerFacade
     /// </summary>
     public class SendCloudToDeviceMessageResult
     {
-        public SendCloudToDeviceMessageResult()
-        {
-        }
-
         /// <summary>
         /// Gets or sets the device identifier.
         /// </summary>
         [JsonProperty("devEUI")]
-        public string DevEUI { get; set; }
+        public string DevEuiString
+        {
+            get => DevEui.ToString();
+            set => DevEui = DevEui.Parse(value);
+        }
+
+        [JsonIgnore]
+        public DevEui DevEui { get; set; }
 
         /// <summary>
         /// Gets or sets the message identifier.

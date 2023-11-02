@@ -4,14 +4,16 @@
 namespace LoRaWan.NetworkServer
 {
     using System.Collections.Generic;
+    using System.Text.Json;
     using LoRaTools.LoRaMessage;
     using Microsoft.Extensions.Logging;
 
     public class FunctionBundlerProvider : IFunctionBundlerProvider
     {
         private readonly LoRaDeviceAPIServiceBase deviceApi;
-
-        private static List<IFunctionBundlerExecutionItem> functionItems = new List<IFunctionBundlerExecutionItem>
+        private readonly ILoggerFactory loggerFactory;
+        private readonly ILogger<FunctionBundlerProvider> logger;
+        private static readonly List<IFunctionBundlerExecutionItem> FunctionItems = new List<IFunctionBundlerExecutionItem>
         {
             new FunctionBundlerDeduplicationExecutionItem(),
             new FunctionBundlerADRExecutionItem(),
@@ -19,9 +21,13 @@ namespace LoRaWan.NetworkServer
             new FunctionBundlerPreferredGatewayExecutionItem(),
         };
 
-        public FunctionBundlerProvider(LoRaDeviceAPIServiceBase deviceApi)
+        public FunctionBundlerProvider(LoRaDeviceAPIServiceBase deviceApi,
+                                       ILoggerFactory loggerFactory,
+                                       ILogger<FunctionBundlerProvider> logger)
         {
             this.deviceApi = deviceApi;
+            this.loggerFactory = loggerFactory;
+            this.logger = logger;
         }
 
         public FunctionBundler CreateIfRequired(
@@ -31,27 +37,21 @@ namespace LoRaWan.NetworkServer
                     IDeduplicationStrategyFactory deduplicationFactory,
                     LoRaRequest request)
         {
+            if (loRaPayload is null) throw new System.ArgumentNullException(nameof(loRaPayload));
+            if (loRaDevice is null) throw new System.ArgumentNullException(nameof(loRaDevice));
             if (!string.IsNullOrEmpty(loRaDevice.GatewayID))
             {
                 // single gateway mode
                 return null;
             }
 
-            var context = new FunctionBundlerExecutionContext
-            {
-                DeduplicationFactory = deduplicationFactory,
-                FCntDown = loRaDevice.FCntDown,
-                FCntUp = loRaPayload.GetFcnt(),
-                GatewayId = gatewayId,
-                LoRaDevice = loRaDevice,
-                LoRaPayload = loRaPayload,
-                Request = request
-            };
+            var context = new FunctionBundlerExecutionContext(gatewayId, loRaPayload.Fcnt, loRaDevice.FCntDown,
+                                                              loRaPayload, loRaDevice, deduplicationFactory, request);
 
-            var qualifyingExecutionItems = new List<IFunctionBundlerExecutionItem>(functionItems.Count);
-            for (var i = 0; i < functionItems.Count; i++)
+            var qualifyingExecutionItems = new List<IFunctionBundlerExecutionItem>(FunctionItems.Count);
+            for (var i = 0; i < FunctionItems.Count; i++)
             {
-                var itm = functionItems[i];
+                var itm = FunctionItems[i];
                 if (itm.RequiresExecution(context))
                 {
                     qualifyingExecutionItems.Add(itm);
@@ -68,7 +68,7 @@ namespace LoRaWan.NetworkServer
                 ClientFCntDown = context.FCntDown,
                 ClientFCntUp = context.FCntUp,
                 GatewayId = gatewayId,
-                Rssi = context.Request.Rxpk.Rssi,
+                Rssi = context.Request.RadioMetadata.UpInfo.ReceivedSignalStrengthIndication,
             };
 
             for (var i = 0; i < qualifyingExecutionItems.Count; i++)
@@ -76,9 +76,12 @@ namespace LoRaWan.NetworkServer
                 qualifyingExecutionItems[i].Prepare(context, bundlerRequest);
             }
 
-            Logger.Log(loRaDevice.DevEUI, "FunctionBundler request: ", bundlerRequest, LogLevel.Debug);
+            this.logger.LogDebug("Finished preparing {NumberOfExecutionItems} FunctionBundler requests.", qualifyingExecutionItems.Count);
 
-            return new FunctionBundler(loRaDevice.DevEUI, this.deviceApi, bundlerRequest, qualifyingExecutionItems, context);
+            if (this.logger.IsEnabled(LogLevel.Debug))
+                this.logger.LogDebug($"FunctionBundler request: {JsonSerializer.Serialize(bundlerRequest)}");
+
+            return new FunctionBundler(loRaDevice.DevEUI, this.deviceApi, bundlerRequest, qualifyingExecutionItems, context, loggerFactory.CreateLogger<FunctionBundler>());
         }
     }
 }

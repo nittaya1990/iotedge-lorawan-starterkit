@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace LoRaTools
@@ -16,13 +16,13 @@ namespace LoRaTools
         public byte Battery { get; set; }
 
         [JsonProperty("margin")]
-        private byte Margin { get; set; }
+        public byte Margin { get; set; }
 
         public override int Length => 3;
 
         public override string ToString()
         {
-            return $"Type: {this.Cid} Answer, Battery Level: {this.Battery}, Margin: {this.Margin}";
+            return $"Type: {Cid} Answer, Battery Level: {Battery}, Margin: {Margin}";
         }
 
         /// <summary>
@@ -31,31 +31,31 @@ namespace LoRaTools
         /// </summary>
         public DevStatusAnswer(byte battery, byte margin)
         {
-            this.Battery = battery;
-            this.Margin = margin;
-            this.Cid = CidEnum.DevStatusCmd;
+            Battery = battery;
+            Margin = margin;
+            Cid = Cid.DevStatusCmd;
         }
 
         public DevStatusAnswer(ReadOnlySpan<byte> readOnlySpan)
             : base(readOnlySpan)
         {
-            if (readOnlySpan.Length < this.Length)
+            if (readOnlySpan.Length < Length)
             {
-                throw new Exception("DevStatusAnswer detected but the byte format is not correct");
+                throw new InvalidOperationException("DevStatusAnswer detected but the byte format is not correct");
             }
             else
             {
-                this.Battery = readOnlySpan[1];
-                this.Margin = readOnlySpan[2];
-                this.Cid = (CidEnum)readOnlySpan[0];
+                Cid = (Cid)readOnlySpan[0];
+                Battery = readOnlySpan[1];
+                Margin = readOnlySpan[2];
             }
         }
 
         public override IEnumerable<byte> ToBytes()
         {
-            yield return (byte)this.Margin;
-            yield return (byte)this.Battery;
-            yield return (byte)this.Cid;
+            yield return (byte)Cid;
+            yield return Battery;
+            yield return Margin;
         }
     }
 }

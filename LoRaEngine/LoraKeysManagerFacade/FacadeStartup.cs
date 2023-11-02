@@ -6,55 +6,80 @@
 namespace LoraKeysManagerFacade
 {
     using System;
+    using System.Net.Http;
     using LoraKeysManagerFacade.FunctionBundler;
     using LoRaTools.ADR;
+    using LoRaTools.IoTHubImpl;
     using Microsoft.Azure.Devices;
     using Microsoft.Azure.Functions.Extensions.DependencyInjection;
+    using Microsoft.Extensions.Azure;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
+    using Microsoft.Extensions.Logging;
     using StackExchange.Redis;
 
     public class FacadeStartup : FunctionsStartup
     {
+        internal const string WebJobsStorageClientName = "WebJobsStorage";
+
         public override void Configure(IFunctionsHostBuilder builder)
         {
+            if (builder is null) throw new ArgumentNullException(nameof(builder));
+
             var configHandler = ConfigHandler.Create(builder);
 
             var iotHubConnectionString = configHandler.IoTHubConnectionString;
             if (iotHubConnectionString == null)
             {
-                throw new Exception($"Missing {ConfigHandler.IoTHubConnectionStringKey} in settings");
+                throw new InvalidOperationException($"Missing {ConfigHandler.IoTHubConnectionStringKey} in settings");
             }
 
             var redisConnectionString = configHandler.RedisConnectionString;
             if (redisConnectionString == null)
             {
-                throw new Exception($"Missing {ConfigHandler.RedisConnectionStringKey} in settings");
+                throw new InvalidOperationException($"Missing {ConfigHandler.RedisConnectionStringKey} in settings");
             }
 
             var redis = ConnectionMultiplexer.Connect(redisConnectionString);
             var redisCache = redis.GetDatabase();
             var deviceCacheStore = new LoRaDeviceCacheRedisStore(redisCache);
 
-            builder.Services.AddSingleton(RegistryManager.CreateFromConnectionString(iotHubConnectionString));
-            builder.Services.AddSingleton<IServiceClient>(new ServiceClientAdapter(ServiceClient.CreateFromConnectionString(iotHubConnectionString)));
-            builder.Services.AddSingleton<ILoRaDeviceCacheStore>(deviceCacheStore);
-            builder.Services.AddSingleton<ILoRaADRManager>(new LoRaADRServerManager(new LoRaADRRedisStore(redisCache), new LoRaADRStrategyProvider(), deviceCacheStore));
-            builder.Services.AddSingleton<CreateEdgeDevice>();
-            builder.Services.AddSingleton<DeviceGetter>();
-            builder.Services.AddSingleton<FCntCacheCheck>();
-            builder.Services.AddSingleton<FunctionBundlerFunction>();
-            builder.Services.AddSingleton<IFunctionBundlerExecutionItem, NextFCntDownExecutionItem>();
-            builder.Services.AddSingleton<IFunctionBundlerExecutionItem, DeduplicationExecutionItem>();
-            builder.Services.AddSingleton<IFunctionBundlerExecutionItem, ADRExecutionItem>();
-            builder.Services.AddSingleton<IFunctionBundlerExecutionItem, PreferredGatewayExecutionItem>();
-            builder.Services.AddSingleton<LoRaDevAddrCache>();
+            builder.Services.AddAzureClients(builder =>
+            {
+                _ = builder.AddBlobServiceClient(configHandler.StorageConnectionString)
+                           .WithName(WebJobsStorageClientName);
+            });
+            _ = builder.Services
+                .AddHttpClient()
+                .AddSingleton(sp => IoTHubRegistryManager.CreateWithProvider(() =>
+                    RegistryManager.CreateFromConnectionString(iotHubConnectionString),
+                    sp.GetRequiredService<IHttpClientFactory>(),
+                    sp.GetRequiredService<ILogger<IoTHubRegistryManager>>()))
+                .AddSingleton<IServiceClient>(new ServiceClientAdapter(ServiceClient.CreateFromConnectionString(iotHubConnectionString)))
+                .AddSingleton<ILoRaDeviceCacheStore>(deviceCacheStore)
+                .AddSingleton<ILoRaADRManager>(sp => new LoRaADRServerManager(new LoRaADRRedisStore(redisCache, sp.GetRequiredService<ILogger<LoRaADRRedisStore>>()),
+                                                                              new LoRaADRStrategyProvider(sp.GetRequiredService<ILoggerFactory>()),
+                                                                              deviceCacheStore,
+                                                                              sp.GetRequiredService<ILoggerFactory>(),
+                                                                              sp.GetRequiredService<ILogger<LoRaADRServerManager>>()))
+                .AddSingleton<IChannelPublisher>(sp => new RedisChannelPublisher(redis, sp.GetRequiredService<ILogger<RedisChannelPublisher>>()))
+                .AddSingleton<DeviceGetter>()
+                .AddSingleton<IEdgeDeviceGetter, EdgeDeviceGetter>()
+                .AddSingleton<FCntCacheCheck>()
+                .AddSingleton<FunctionBundlerFunction>()
+                .AddSingleton<IFunctionBundlerExecutionItem, NextFCntDownExecutionItem>()
+                .AddSingleton<IFunctionBundlerExecutionItem, DeduplicationExecutionItem>()
+                .AddSingleton<IFunctionBundlerExecutionItem, ADRExecutionItem>()
+                .AddSingleton<IFunctionBundlerExecutionItem, PreferredGatewayExecutionItem>()
+                .AddSingleton<LoRaDevAddrCache>()
+                .AddApplicationInsightsTelemetry();
         }
 
-        abstract class ConfigHandler
+        private abstract class ConfigHandler
         {
             internal const string IoTHubConnectionStringKey = "IoTHubConnectionString";
             internal const string RedisConnectionStringKey = "RedisConnectionString";
+            internal const string StorageConnectionStringKey = "AzureWebJobsStorage";
 
             internal static ConfigHandler Create(IFunctionsHostBuilder builder)
             {
@@ -70,11 +95,13 @@ namespace LoraKeysManagerFacade
                 return new LocalConfigHandler();
             }
 
+            internal abstract string StorageConnectionString { get; }
+
             internal abstract string RedisConnectionString { get; }
 
             internal abstract string IoTHubConnectionString { get; }
 
-            class ProductionConfigHandler : ConfigHandler
+            private class ProductionConfigHandler : ConfigHandler
             {
                 private readonly IConfiguration config;
 
@@ -86,9 +113,11 @@ namespace LoraKeysManagerFacade
                 internal override string RedisConnectionString => this.config.GetConnectionString(RedisConnectionStringKey);
 
                 internal override string IoTHubConnectionString => this.config.GetConnectionString(IoTHubConnectionStringKey);
+
+                internal override string StorageConnectionString => this.config.GetConnectionStringOrSetting(StorageConnectionStringKey);
             }
 
-            class LocalConfigHandler : ConfigHandler
+            private class LocalConfigHandler : ConfigHandler
             {
                 private readonly IConfiguration config;
 
@@ -104,6 +133,8 @@ namespace LoraKeysManagerFacade
                 internal override string RedisConnectionString => this.config.GetValue<string>(RedisConnectionStringKey);
 
                 internal override string IoTHubConnectionString => this.config.GetValue<string>(IoTHubConnectionStringKey);
+
+                internal override string StorageConnectionString => this.config.GetConnectionStringOrSetting(StorageConnectionStringKey);
             }
         }
     }

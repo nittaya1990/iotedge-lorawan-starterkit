@@ -4,7 +4,7 @@
 namespace LoraKeysManagerFacade
 {
     using System;
-    using Newtonsoft.Json;
+    using LoRaWan;
 
     /// <summary>
     /// Contains the preferred gateway for a class C device
@@ -24,22 +24,22 @@ namespace LoraKeysManagerFacade
 
         public LoRaDevicePreferredGateway(string gatewayID, uint fcntUp)
         {
-            this.GatewayID = gatewayID;
-            this.FcntUp = fcntUp;
-            this.UpdateTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            GatewayID = gatewayID;
+            FcntUp = fcntUp;
+            UpdateTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         }
 
         /// <summary>
         /// Creates a string representation of the object for caching.
         /// </summary>
         /// <returns>A string containing {GatewayID};{FcntUp};{UpdateTime}.</returns>
-        string ToCachedString() => string.Concat(this.GatewayID, ";", this.FcntUp, ";", this.UpdateTime);
+        private string ToCachedString() => string.Concat(GatewayID, ";", FcntUp, ";", UpdateTime);
 
         /// <summary>
         /// Creates a <see cref="LoRaDevicePreferredGateway"/> from a string
         /// String format should be: {GatewayID};{FcntUp};{UpdateTime}.
         /// </summary>
-        static LoRaDevicePreferredGateway CreateFromCachedString(string cachedString)
+        private static LoRaDevicePreferredGateway CreateFromCachedString(string cachedString)
         {
             if (string.IsNullOrEmpty(cachedString))
                 return null;
@@ -62,16 +62,16 @@ namespace LoraKeysManagerFacade
             };
         }
 
-        internal static string PreferredGatewayCacheKey(string devEUI) => $"preferredGateway:{devEUI}";
+        internal static string PreferredGatewayCacheKey(DevEui devEUI) => FormattableString.Invariant($"preferredGateway:{devEUI}");
 
-        internal static string PreferredGatewayFcntUpItemListCacheKey(string devEUI, uint fcntUp) => $"preferredGateway:{devEUI}:{fcntUp}";
+        internal static string PreferredGatewayFcntUpItemListCacheKey(DevEui devEUI, uint fcntUp) => FormattableString.Invariant($"preferredGateway:{devEUI}:{fcntUp}");
 
-        internal static LoRaDevicePreferredGateway LoadFromCache(ILoRaDeviceCacheStore cacheStore, string devEUI)
+        internal static LoRaDevicePreferredGateway LoadFromCache(ILoRaDeviceCacheStore cacheStore, DevEui devEUI)
         {
             return CreateFromCachedString(cacheStore.StringGet(PreferredGatewayCacheKey(devEUI)));
         }
 
-        internal static bool SaveToCache(ILoRaDeviceCacheStore cacheStore, string devEUI, LoRaDevicePreferredGateway preferredGateway, bool onlyIfNotExists = false)
+        internal static bool SaveToCache(ILoRaDeviceCacheStore cacheStore, DevEui devEUI, LoRaDevicePreferredGateway preferredGateway, bool onlyIfNotExists = false)
         {
             return cacheStore.StringSet(PreferredGatewayCacheKey(devEUI), preferredGateway.ToCachedString(), null, onlyIfNotExists);
         }

@@ -1,74 +1,71 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace LoraKeysManagerFacade
 {
     using System;
-    using System.Collections.Generic;
-    using System.Text;
     using System.Threading.Tasks;
-    using LoRaWan.Shared;
+    using LoRaTools;
+    using LoRaWan;
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
-    using Microsoft.Azure.Devices;
     using Microsoft.Azure.WebJobs;
     using Microsoft.Azure.WebJobs.Extensions.Http;
     using Microsoft.Extensions.Logging;
 
     public class SearchDeviceByDevEUI
     {
-        private readonly RegistryManager registryManager;
+        private readonly IDeviceRegistryManager registryManager;
+        private readonly ILogger<SearchDeviceByDevEUI> logger;
 
-        public SearchDeviceByDevEUI(RegistryManager registryManager)
+        public SearchDeviceByDevEUI(IDeviceRegistryManager registryManager, ILogger<SearchDeviceByDevEUI> logger)
         {
             this.registryManager = registryManager;
+            this.logger = logger;
         }
 
         [FunctionName(nameof(GetDeviceByDevEUI))]
-        public async Task<IActionResult> GetDeviceByDevEUI([HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)]HttpRequest req, ILogger log, ExecutionContext context)
+        public async Task<IActionResult> GetDeviceByDevEUI([HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] HttpRequest req)
         {
+            if (req is null) throw new ArgumentNullException(nameof(req));
+
             try
             {
                 VersionValidator.Validate(req);
             }
             catch (IncompatibleVersionException ex)
             {
-                log.LogError(ex, "Invalid version");
+                this.logger.LogError(ex, "Invalid version");
                 return new BadRequestObjectResult(ex.Message);
             }
 
-            return await this.RunGetDeviceByDevEUI(req, log, context, ApiVersion.LatestVersion);
+            return await RunGetDeviceByDevEUI(req);
         }
 
-        private async Task<IActionResult> RunGetDeviceByDevEUI(HttpRequest req, ILogger log, ExecutionContext context, ApiVersion currentApiVersion)
+        private async Task<IActionResult> RunGetDeviceByDevEUI(HttpRequest req)
         {
-            string devEUI = req.Query["DevEUI"];
-            if (string.IsNullOrEmpty(devEUI))
+            string devEui = req.Query["DevEUI"];
+            if (!DevEui.TryParse(devEui, out var parsedDevEui))
             {
-                log.LogError("DevEUI missing in request");
-                return new BadRequestObjectResult("DevEUI missing in request");
+                return new BadRequestObjectResult("DevEUI missing or invalid.");
             }
 
-            var result = new List<IoTHubDeviceInfo>();
-            var device = await this.registryManager.GetDeviceAsync(devEUI);
-            if (device != null)
-            {
-                if (device != null)
-                {
-                    result.Add(new IoTHubDeviceInfo()
-                    {
-                        DevEUI = devEUI,
-                        PrimaryKey = device.Authentication.SymmetricKey.PrimaryKey
-                    });
-                }
+            using var deviceScope = this.logger.BeginDeviceScope(parsedDevEui);
 
-                log.LogDebug($"Search for {devEUI} found 1 device");
-                return new OkObjectResult(result);
+            var primaryKey = await this.registryManager.GetDevicePrimaryKeyAsync(parsedDevEui.ToString());
+            if (primaryKey != null)
+            {
+                this.logger.LogDebug($"Search for {devEui} found 1 device");
+                return new OkObjectResult(new
+                {
+                    DevEUI = devEui,
+                    PrimaryKey = primaryKey
+                });
             }
             else
             {
-                log.LogInformation($"Search for {devEUI} found 0 devices");
-                return new NotFoundObjectResult(result);
+                this.logger.LogInformation($"Search for {devEui} found 0 devices");
+                return new NotFoundResult();
             }
         }
     }

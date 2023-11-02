@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace LoraKeysManagerFacade
@@ -42,7 +42,7 @@ namespace LoraKeysManagerFacade
 
         IReadOnlyList<string> ListGet(string key);
 
-        bool TrySetHashObject(string key, string subkey, string value, TimeSpan? timeToExpire = null);
+        void SetHashObject(string key, string subkey, string value, TimeSpan? timeToExpire = null);
 
         HashEntry[] GetHashObject(string key);
 

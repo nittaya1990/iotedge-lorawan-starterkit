@@ -1,21 +1,23 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace LoRaWan.NetworkServer
 {
-    using System;
     using LoRaTools.LoRaPhysical;
 
-    internal class DownlinkMessageBuilderResponse
+    public class DownlinkMessageBuilderResponse
     {
-        internal DownlinkPktFwdMessage DownlinkPktFwdMessage { get; set; }
+        internal DownlinkMessage DownlinkMessage { get; set; }
 
         internal bool IsMessageTooLong { get; set; }
 
-        internal DownlinkMessageBuilderResponse(DownlinkPktFwdMessage downlinkPktFwdMessage, bool isMessageTooLong)
+        public ReceiveWindowNumber? ReceiveWindow { get; }
+
+        internal DownlinkMessageBuilderResponse(DownlinkMessage downlinkMessage, bool isMessageTooLong, ReceiveWindowNumber? receiveWindow)
         {
-            this.DownlinkPktFwdMessage = downlinkPktFwdMessage;
-            this.IsMessageTooLong = isMessageTooLong;
+            DownlinkMessage = downlinkMessage;
+            IsMessageTooLong = isMessageTooLong;
+            ReceiveWindow = receiveWindow;
         }
     }
 }

@@ -1,49 +1,54 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace LoRaTools.CommonAPI
 {
     using System.Collections.Generic;
-    using Newtonsoft.Json;
+    using LoRaWan;
 
     /// <summary>
     /// Defines the contract for a LoRa cloud to device message.
     /// </summary>
     public class LoRaCloudToDeviceMessage : ILoRaCloudToDeviceMessage
     {
-        [JsonProperty("devEUI", NullValueHandling = NullValueHandling.Ignore)]
-        public string DevEUI { get; set; }
+        private const string DevEuiPropertyName = "DevEUI";
 
-        [JsonProperty("fport", NullValueHandling = NullValueHandling.Ignore)]
-        public byte Fport { get; set; }
+        [Newtonsoft.Json.JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+        public DevEui? DevEUI { get; set; }
+
+        [Newtonsoft.Json.JsonProperty(DevEuiPropertyName)]
+        [System.Text.Json.Serialization.JsonPropertyName(DevEuiPropertyName)]
+        public string DevEuiString
+        {
+            get => DevEUI?.ToString();
+            set => DevEUI = value is null ? null : DevEui.Parse(value);
+        }
+
+        public FramePort Fport { get; set; }
 
         /// <summary>
         /// Gets or sets payload as base64 string
         /// Use this to send bytes.
         /// </summary>
-        [JsonProperty("rawPayload", NullValueHandling = NullValueHandling.Ignore)]
         public string RawPayload { get; set; }
 
         /// <summary>
         /// Gets or sets payload as string
         /// Use this to send text.
         /// </summary>
-        [JsonProperty("payload", NullValueHandling = NullValueHandling.Ignore)]
         public string Payload { get; set; }
 
-        [JsonProperty("confirmed", NullValueHandling = NullValueHandling.Ignore)]
         public bool Confirmed { get; set; }
 
-        [JsonProperty("messageId", NullValueHandling = NullValueHandling.Ignore)]
         public string MessageId { get; set; }
 
-        [JsonProperty("macCommands", NullValueHandling = NullValueHandling.Ignore)]
-        public IList<MacCommand> MacCommands { get; set; }
+        public IList<MacCommand> MacCommands { get; } = new List<MacCommand>();
 
         /// <summary>
         /// Gets if the cloud to device message has any payload data (mac commands don't count).
         /// </summary>
-        protected bool HasPayload() => !string.IsNullOrEmpty(this.Payload) || !string.IsNullOrEmpty(this.RawPayload);
+        protected bool HasPayload() => !string.IsNullOrEmpty(Payload) || !string.IsNullOrEmpty(RawPayload);
 
         /// <summary>
         /// Identifies if the message is a valid LoRa downstream message.
@@ -55,19 +60,19 @@ namespace LoRaTools.CommonAPI
             // ensure fport follows LoRa specification
             // 0    => reserved for mac commands
             // 224+ => reserved for future applications
-            if (this.Fport >= LoRaFPort.ReservedForFutureAplications)
+            if (Fport.IsReserved())
             {
-                errorMessage = $"invalid fport '{this.Fport}' in cloud to device message '{this.MessageId}'";
+                errorMessage = $"invalid fport '{(byte)Fport}' in cloud to device message '{MessageId}'";
                 return false;
             }
 
             // fport 0 is reserved for mac commands
-            if (this.Fport == LoRaFPort.MacCommand)
+            if (Fport == FramePort.MacCommand)
             {
                 // Not valid if there is no mac command or there is a payload
-                if ((this.MacCommands?.Count ?? 0) == 0 || this.HasPayload())
+                if ((MacCommands?.Count ?? 0) == 0 || HasPayload())
                 {
-                    errorMessage = $"invalid MAC command fport usage in cloud to device message '{this.MessageId}'";
+                    errorMessage = $"invalid MAC command fport usage in cloud to device message '{MessageId}'";
                     return false;
                 }
             }

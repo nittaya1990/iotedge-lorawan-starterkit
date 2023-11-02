@@ -5,21 +5,24 @@ namespace LoRaWan.NetworkServer
 {
     using LoRaTools.CommonAPI;
     using LoRaWan.NetworkServer.ADR;
-    using Microsoft.Extensions.Logging;
+    using System;
 
     public class FunctionBundlerADRExecutionItem : IFunctionBundlerExecutionItem
     {
         public void Prepare(FunctionBundlerExecutionContext context, FunctionBundlerRequest request)
         {
+            if (context is null) throw new ArgumentNullException(nameof(context));
+            if (request is null) throw new ArgumentNullException(nameof(request));
+
             request.AdrRequest = new LoRaADRRequest
             {
-                DataRate = context.Request.Region.GetDRFromFreqAndChan(context.Request.Rxpk.Datr),
+                DataRate = context.Request.RadioMetadata.DataRate,
                 FCntDown = context.FCntDown,
                 FCntUp = context.FCntUp,
                 GatewayId = context.GatewayId,
                 MinTxPowerIndex = context.Request.Region.TXPowertoMaxEIRP.Count - 1,
-                PerformADRCalculation = context.LoRaPayload.IsAdrReq,
-                RequiredSnr = (float)context.Request.Rxpk.RequiredSnr
+                PerformADRCalculation = context.LoRaPayload.IsAdrAckRequested,
+                RequiredSnr = (float)context.Request.Region.RequiredSnr(context.Request.RadioMetadata.DataRate)
             };
 
             request.FunctionItems |= FunctionBundlerItemType.ADR;
@@ -27,6 +30,9 @@ namespace LoRaWan.NetworkServer
 
         public void ProcessResult(FunctionBundlerExecutionContext context, FunctionBundlerResult result)
         {
+            if (context is null) throw new ArgumentNullException(nameof(context));
+            if (result is null) throw new ArgumentNullException(nameof(result));
+
             if (result.AdrResult != null)
             {
                 if (result.AdrResult.CanConfirmToDevice && result.AdrResult.FCntDown > 0)
@@ -38,7 +44,8 @@ namespace LoRaWan.NetworkServer
 
         public bool RequiresExecution(FunctionBundlerExecutionContext context)
         {
-            return context.LoRaPayload.IsAdrEnabled;
+            if (context is null) throw new ArgumentNullException(nameof(context));
+            return context.LoRaPayload.IsDataRateNetworkControlled;
         }
     }
 }

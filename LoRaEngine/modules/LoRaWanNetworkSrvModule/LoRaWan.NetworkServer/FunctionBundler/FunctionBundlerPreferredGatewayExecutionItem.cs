@@ -4,16 +4,16 @@
 namespace LoRaWan.NetworkServer
 {
     using LoRaTools.CommonAPI;
-    using LoRaWan.NetworkServer.ADR;
-    using Microsoft.Extensions.Logging;
+    using System;
 
     public class FunctionBundlerPreferredGatewayExecutionItem : IFunctionBundlerExecutionItem
     {
         public void Prepare(FunctionBundlerExecutionContext context, FunctionBundlerRequest request)
         {
-            request.FunctionItems |= FunctionBundlerItemType.PreferredGateway;
+            if (context is null) throw new ArgumentNullException(nameof(context));
+            if (request is null) throw new ArgumentNullException(nameof(request));
 
-            Logger.Log(context.LoRaDevice.DevEUI, "FunctionBundler ADR request finished preparing.", LogLevel.Debug);
+            request.FunctionItems |= FunctionBundlerItemType.PreferredGateway;
         }
 
         public void ProcessResult(FunctionBundlerExecutionContext context, FunctionBundlerResult result)
@@ -22,6 +22,7 @@ namespace LoRaWan.NetworkServer
 
         public bool RequiresExecution(FunctionBundlerExecutionContext context)
         {
+            if (context is null) throw new ArgumentNullException(nameof(context));
             return context.LoRaDevice.ClassType == LoRaDeviceClassType.C && string.IsNullOrEmpty(context.LoRaDevice.GatewayID);
         }
     }

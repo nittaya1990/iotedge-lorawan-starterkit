@@ -3,13 +3,12 @@
 
 namespace LoraKeysManagerFacade.FunctionBundler
 {
-    using System.Collections.Generic;
-    using LoRaTools.CommonAPI;
+    using LoRaWan;
     using Microsoft.Extensions.Logging;
 
     public interface IPipelineExecutionContext
     {
-        string DevEUI { get; }
+        DevEui DevEUI { get; }
 
         FunctionBundlerRequest Request { get; }
 

@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace LoRaWan.NetworkServer
@@ -7,9 +7,9 @@ namespace LoRaWan.NetworkServer
     using System.Net.Http;
     using System.Net.Http.Headers;
     using System.Text;
+    using System.Threading;
     using System.Threading.Tasks;
-    using LoRaTools.ADR;
-    using LoRaWan.NetworkServer.ADR;
+    using LoRaTools.CommonAPI;
 
     /// <summary>
     /// LoRa Device API contract.
@@ -19,62 +19,60 @@ namespace LoRaWan.NetworkServer
         /// <summary>
         /// Gets URL of the API.
         /// </summary>
-        public string URL { get; private set; }
+        public Uri URL { get; set; }
 
         /// <summary>
         /// Gets the authentication code for the API.
         /// </summary>
         public string AuthCode { get; private set; }
 
-        public abstract Task<uint> NextFCntDownAsync(string devEUI, uint fcntDown, uint fcntUp, string gatewayId);
+        public abstract Task<uint> NextFCntDownAsync(DevEui devEUI, uint fcntDown, uint fcntUp, string gatewayId);
 
-        public abstract Task<bool> ABPFcntCacheResetAsync(string devEUI, uint fcntUp, string gatewayId);
+        public abstract Task<bool> ABPFcntCacheResetAsync(DevEui devEUI, uint fcntUp, string gatewayId);
 
         /// <summary>
         /// Searchs devices based on devAddr.
         /// </summary>
-        public abstract Task<SearchDevicesResult> SearchByDevAddrAsync(string devAddr);
+        public abstract Task<SearchDevicesResult> SearchByDevAddrAsync(DevAddr devAddr);
 
         /// <summary>
         /// Search and locks device for join request.
         /// </summary>
-        public abstract Task<SearchDevicesResult> SearchAndLockForJoinAsync(string gatewayID, string devEUI, string appEUI, string devNonce);
-
-        public abstract Task<SearchDevicesResult> SearchByDevEUIAsync(string devEUI);
+        public abstract Task<SearchDevicesResult> SearchAndLockForJoinAsync(string gatewayID, DevEui devEUI, DevNonce devNonce);
 
         /// <summary>
-        /// Sets the new URL value.
+        /// Searches the primary key for a station device in IoT Hub.
         /// </summary>
-        public void SetURL(string value) => this.URL = this.SanitizeApiURL(value);
+        /// <param name="eui">EUI of the station.</param>
+        public abstract Task<string> GetPrimaryKeyByEuiAsync(StationEui eui);
 
-        private string SanitizeApiURL(string value)
-        {
-            if (string.IsNullOrEmpty(value))
-                return string.Empty;
+        /// <summary>
+        /// Fetch station credentials in IoT Hub.
+        /// </summary>
+        /// <param name="eui">EUI of the station.</param>
+        public abstract Task<string> FetchStationCredentialsAsync(StationEui eui, ConcentratorCredentialType credentialtype, CancellationToken token);
 
-            value = value.Trim();
-            if (value.EndsWith('/'))
-                return value;
+        /// <summary>
+        /// Fetch station firmware file.
+        /// </summary>
+        /// <param name="eui">EUI of the station.</param>
+        /// <returns>An instance of <see cref="HttpContent"/> with the firmware content.</returns>
+        public abstract Task<HttpContent> FetchStationFirmwareAsync(StationEui eui, CancellationToken token);
 
-            return string.Concat(value, "/");
-        }
+        /// <summary>
+        /// Searches the primary key for a LoRa device in IoT Hub.
+        /// </summary>
+        /// <param name="eui">EUI of the LoRa device.</param>
+        public abstract Task<string> GetPrimaryKeyByEuiAsync(DevEui eui);
 
         /// <summary>
         /// Sets the authorization code for the URL.
         /// </summary>
-        public void SetAuthCode(string value) => this.AuthCode = value;
+        public void SetAuthCode(string value) => AuthCode = value;
 
-        /// <summary>
-        /// Validates if the specified message from the device
-        /// was already processed by any gateway in the system.
-        /// </summary>
-        /// <param name="devEUI">Device identifier.</param>
-        /// <param name="fcntUp">frame count of the message we received.</param>
-        /// <param name="gatewayId">The current processing gateway.</param>
-        /// <param name="fcntDown">The frame count down of the client.</returns>
-        public abstract Task<DeduplicationResult> CheckDuplicateMsgAsync(string devEUI, uint fcntUp, string gatewayId, uint fcntDown);
+        public abstract Task SendJoinNotificationAsync(DeviceJoinNotification deviceJoinNotification, CancellationToken token);
 
-        public abstract Task<FunctionBundlerResult> ExecuteFunctionBundlerAsync(string devEUI, FunctionBundlerRequest request);
+        public abstract Task<FunctionBundlerResult> ExecuteFunctionBundlerAsync(DevEui devEUI, FunctionBundlerRequest request);
 
         protected LoRaDeviceAPIServiceBase()
         {
@@ -82,8 +80,9 @@ namespace LoRaWan.NetworkServer
 
         protected LoRaDeviceAPIServiceBase(NetworkServerConfiguration configuration)
         {
-            this.AuthCode = configuration.FacadeAuthCode;
-            this.URL = this.SanitizeApiURL(configuration.FacadeServerUrl);
+            if (configuration is null) throw new ArgumentNullException(nameof(configuration));
+            AuthCode = configuration.FacadeAuthCode;
+            URL = configuration.FacadeServerUrl;
         }
 
         protected static ByteArrayContent PreparePostContent(string requestBody)

@@ -1,13 +1,15 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace LoRaWan.NetworkServer
 {
     using System;
+    using System.Diagnostics.Metrics;
     using LoRaTools.LoRaMessage;
     using LoRaTools.LoRaPhysical;
     using LoRaTools.Regions;
-    using LoRaTools.Utils;
+    using LoRaWan;
+    using LoRaWan.NetworkServer.BasicsStation;
     using Microsoft.Extensions.Logging;
 
     /// <summary>
@@ -16,38 +18,49 @@ namespace LoRaWan.NetworkServer
     public class LoggingLoRaRequest : LoRaRequest
     {
         private readonly LoRaRequest wrappedRequest;
+        private readonly ILogger<LoggingLoRaRequest> logger;
+        private readonly Histogram<double> d2cMessageDeliveryLatencyHistogram;
 
-        public override IPacketForwarder PacketForwarder => this.wrappedRequest.PacketForwarder;
+        public override IDownstreamMessageSender DownstreamMessageSender => this.wrappedRequest.DownstreamMessageSender;
 
         public override Region Region => this.wrappedRequest.Region;
 
         public override LoRaPayload Payload => this.wrappedRequest.Payload;
 
-        public override Rxpk Rxpk => this.wrappedRequest.Rxpk;
+        public override RadioMetadata RadioMetadata => this.wrappedRequest.RadioMetadata;
 
         public override DateTime StartTime => this.wrappedRequest.StartTime;
 
-        public LoggingLoRaRequest(LoRaRequest wrappedRequest)
+        public override StationEui StationEui => this.wrappedRequest.StationEui;
+
+        public LoggingLoRaRequest(LoRaRequest wrappedRequest, ILogger<LoggingLoRaRequest> logger, Histogram<double> d2cMessageDeliveryLatencyHistogram)
         {
             this.wrappedRequest = wrappedRequest;
+            this.logger = logger;
+            this.d2cMessageDeliveryLatencyHistogram = d2cMessageDeliveryLatencyHistogram;
         }
 
         public override void NotifyFailed(string deviceId, LoRaDeviceRequestFailedReason reason, Exception exception = null)
         {
             this.wrappedRequest.NotifyFailed(deviceId, reason, exception);
-            this.LogProcessingTime(deviceId);
+            TrackProcessingTime();
         }
 
-        public override void NotifySucceeded(LoRaDevice loRaDevice, DownlinkPktFwdMessage downlink)
+        public override void NotifySucceeded(LoRaDevice loRaDevice, DownlinkMessage downlink)
         {
             this.wrappedRequest.NotifySucceeded(loRaDevice, downlink);
-            this.LogProcessingTime(loRaDevice?.DevEUI);
+            TrackProcessingTime();
         }
 
-        private void LogProcessingTime(string deviceId)
+        private void TrackProcessingTime()
         {
-            deviceId = deviceId ?? ConversionHelper.ByteArrayToString(this.wrappedRequest.Payload.DevAddr);
-            Logger.Log(deviceId, $"processing time: {DateTime.UtcNow.Subtract(this.wrappedRequest.StartTime)}", LogLevel.Debug);
+            var elapsedTime = DateTime.UtcNow.Subtract(this.wrappedRequest.StartTime);
+            this.d2cMessageDeliveryLatencyHistogram?.Record(elapsedTime.TotalMilliseconds);
+
+            if (!this.logger.IsEnabled(LogLevel.Debug))
+                return;
+
+            this.logger.LogDebug($"processing time: {elapsedTime}");
         }
 
         public override LoRaOperationTimeWatcher GetTimeWatcher() => this.wrappedRequest.GetTimeWatcher();

@@ -6,20 +6,16 @@ namespace LoRaWan.NetworkServer
     using System;
     using System.Collections.Generic;
     using LoRaTools.LoRaMessage;
-    using LoRaTools.LoRaPhysical;
     using Newtonsoft.Json;
 
     // Represents the device telemetry that will be sent to IoT Hub
     public class LoRaDeviceTelemetry
     {
         [JsonProperty("time")]
-        public string Time { get; set; }
+        public ulong Time { get; set; }
 
         [JsonProperty("tmms")]
-        public uint Tmms { get; set; }
-
-        [JsonProperty("tmst")]
-        public uint Tmst { get; set; }
+        public uint GpsTime { get; set; }
 
         [JsonProperty("freq")]
         public double Freq { get; set; }
@@ -30,35 +26,32 @@ namespace LoRaWan.NetworkServer
         [JsonProperty("rfch")]
         public uint Rfch { get; set; }
 
-        [JsonProperty("stat")]
-        public int Stat { get; set; }
-
         [JsonProperty("modu")]
         public string Modu { get; set; }
 
         [JsonProperty("datr")]
         public string Datr { get; set; }
 
-        [JsonProperty("codr")]
-        public string Codr { get; set; }
-
         [JsonProperty("rssi")]
-        public int Rssi { get; set; }
+        public double Rssi { get; set; }
 
         [JsonProperty("lsnr")]
         public float Lsnr { get; set; }
-
-        [JsonProperty("size")]
-        public uint Size { get; set; }
 
         [JsonProperty("data")]
         public object Data { get; set; }
 
         [JsonProperty("port")]
-        public byte Port { get; set; }
+        public byte? PortByte { get => (byte?)Port; set => Port = (FramePort?)value; }
+
+        [JsonIgnore]
+        public FramePort? Port { get; private set; }
 
         [JsonProperty("fcnt")]
         public ushort Fcnt { get; set; }
+
+        [JsonProperty("edgets")]
+        public long Edgets { get; set; }
 
         [JsonProperty("rawdata")]
         public string Rawdata { get; set; }
@@ -69,8 +62,8 @@ namespace LoRaWan.NetworkServer
         [JsonProperty("gatewayid")]
         public string GatewayID { get; set; }
 
-        [JsonProperty("edgets")]
-        public long Edgets { get; set; }
+        [JsonProperty("stationeui")]
+        public string StationEui { get; set; }
 
         [JsonProperty("dupmsg", DefaultValueHandling = DefaultValueHandling.Ignore)]
         public bool? DupMsg { get; set; }
@@ -82,28 +75,27 @@ namespace LoRaWan.NetworkServer
         {
         }
 
-        public LoRaDeviceTelemetry(Rxpk rxpk, LoRaPayloadData upstreamPayload, object payloadData, byte[] decryptedPayloadData)
+        public LoRaDeviceTelemetry(LoRaRequest request, LoRaPayloadData upstreamPayload, object payloadData, byte[] decryptedPayloadData)
         {
-            if (rxpk.ExtraData != null)
-                this.ExtraData = new Dictionary<string, object>(rxpk.ExtraData);
-
-            this.Chan = rxpk.Chan;
-            this.Codr = rxpk.Codr;
-            this.Data = payloadData;
-            this.Rawdata = decryptedPayloadData?.Length > 0 ? Convert.ToBase64String(decryptedPayloadData) : string.Empty;
-            this.Datr = rxpk.Datr;
-            this.Freq = rxpk.Freq;
-            this.Lsnr = rxpk.Lsnr;
-            this.Modu = rxpk.Modu;
-            this.Rfch = rxpk.Rfch;
-            this.Rssi = rxpk.Rssi;
-            this.Size = rxpk.Size;
-            this.Stat = rxpk.Stat;
-            this.Time = rxpk.Time;
-            this.Tmms = rxpk.Tmms;
-            this.Tmst = rxpk.Tmst;
-            this.Fcnt = upstreamPayload.GetFcnt();
-            this.Port = upstreamPayload.GetFPort();
+            if (request is null) throw new ArgumentNullException(nameof(request));
+            var radioMetadata = request.RadioMetadata;
+            if (radioMetadata is null) throw new ArgumentException(nameof(radioMetadata));
+            if (upstreamPayload is null) throw new ArgumentNullException(nameof(upstreamPayload));
+            var datr = request.Region.GetDatarateFromIndex(request.RadioMetadata.DataRate);
+            Data = payloadData;
+            Rawdata = decryptedPayloadData?.Length > 0 ? Convert.ToBase64String(decryptedPayloadData) : string.Empty;
+            Fcnt = upstreamPayload.Fcnt;
+            Port = upstreamPayload.Fport;
+            Freq = radioMetadata.Frequency.InMega;
+            Datr = datr.ToString();
+            Rssi = radioMetadata.UpInfo.ReceivedSignalStrengthIndication;
+            Rfch = radioMetadata.UpInfo.AntennaPreference;
+            Lsnr = radioMetadata.UpInfo.SignalNoiseRatio;
+            Time = unchecked(radioMetadata.UpInfo.Xtime); // This is used by former computation only.
+            Chan = (uint)radioMetadata.DataRate; // This is not used in any computation. It is only reported in the device telemetry.
+            GpsTime = radioMetadata.UpInfo.GpsTime; // This is not used in any computation. It is only reported in the device telemetry.
+            Modu = datr.ModulationKind.ToString(); // This is only used in test path by legacy PacketForwarder code. Safe to eventually remove. Could be also "FSK"
+            StationEui = request.StationEui.ToString();
         }
     }
 }

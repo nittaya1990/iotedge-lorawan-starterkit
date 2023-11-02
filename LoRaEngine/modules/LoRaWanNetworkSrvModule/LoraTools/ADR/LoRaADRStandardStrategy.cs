@@ -1,22 +1,19 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace LoRaTools.ADR
 {
-    using System;
     using System.Linq;
-    using LoRaTools.LoRaPhysical;
-    using LoRaTools.Regions;
     using LoRaWan;
+    using Microsoft.Extensions.Logging;
 
     /// <summary>
     /// A strategy based on the standard ADR strategy.
     /// </summary>
-    public class LoRaADRStandardStrategy : ILoRaADRStrategy
+    public sealed class LoRaADRStandardStrategy : ILoRaADRStrategy
     {
         private const int MarginDb = 5;
         private const int MaxTxPowerIndex = 0;
-        private const int DefaultNbRep = 1;
 
         /// <summary>
         /// Array to calculate nb Repetion given packet loss
@@ -30,6 +27,7 @@ namespace LoRaTools.ADR
             { 2, 3, 3 },
             { 3, 3, 3 }
         };
+        private readonly ILogger<LoRaADRStandardStrategy> logger;
 
         public int MinimumNumberOfResult => 20;
 
@@ -37,25 +35,30 @@ namespace LoRaTools.ADR
 
         int ILoRaADRStrategy.DefaultNbRep => 1;
 
-        public LoRaADRResult ComputeResult(string devEUI, LoRaADRTable table, float requiredSnr, int upstreamDataRate, int minTxPower, int maxDr)
+        public LoRaADRStandardStrategy(ILogger<LoRaADRStandardStrategy> logger)
+        {
+            this.logger = logger;
+        }
+
+        public LoRaADRResult ComputeResult(LoRaADRTable table, float requiredSnr, DataRateIndex upstreamDataRate, int minTxPower, DataRateIndex maxDr)
         {
             // We do not have enough frame to calculate ADR. We can assume that a crash was the cause.
             if (table == null || table.Entries.Count < 20)
             {
-                Logger.Log(devEUI, "ADR: not enough frames captured. Sending default power values", Microsoft.Extensions.Logging.LogLevel.Debug);
+                this.logger.LogDebug("ADR: not enough frames captured. Sending default power values");
                 return null;
             }
 
             // This is the first contact case to harmonize the txpower state between device and server or the crash case.
             if (!table.CurrentNbRep.HasValue || !table.CurrentTxPower.HasValue)
             {
-                Logger.Log(devEUI, "ADR: Sending the device default power values", Microsoft.Extensions.Logging.LogLevel.Debug);
+                this.logger.LogDebug("ADR: Sending the device default power values");
                 return null;
             }
 
             // This is a case of standard ADR calculus.
-            var newNbRep = this.ComputeNbRepetion(table.Entries[0].FCnt, table.Entries[LoRaADRTable.FrameCountCaptureCount - 1].FCnt, table.CurrentNbRep.GetValueOrDefault());
-            (int newTxPowerIndex, int newDatarate) = this.GetPowerAndDRConfiguration(requiredSnr, upstreamDataRate, table.Entries.Max(x => x.Snr), table.CurrentTxPower.GetValueOrDefault(), minTxPower, maxDr);
+            var newNbRep = ComputeNbRepetion(table.Entries[0].FCnt, table.Entries[LoRaADRTable.FrameCountCaptureCount - 1].FCnt, table.CurrentNbRep.GetValueOrDefault());
+            (var newTxPowerIndex, var newDatarate) = GetPowerAndDRConfiguration(requiredSnr, upstreamDataRate, table.Entries.Max(x => x.Snr), table.CurrentTxPower.GetValueOrDefault(), minTxPower, maxDr);
 
             if (newNbRep != table.CurrentNbRep || newTxPowerIndex != table.CurrentTxPower || newDatarate != upstreamDataRate)
             {
@@ -70,13 +73,13 @@ namespace LoRaTools.ADR
             return null;
         }
 
-        private (int txPower, int datarate) GetPowerAndDRConfiguration(float requiredSnr, int dataRate, double maxSnr, int currentTxPowerIndex, int minTxPowerIndex, int maxDr)
+        private static (int txPower, DataRateIndex datarate) GetPowerAndDRConfiguration(float requiredSnr, DataRateIndex dataRate, double maxSnr, int currentTxPowerIndex, int minTxPowerIndex, DataRateIndex maxDr)
         {
-            double snrMargin = maxSnr - requiredSnr - MarginDb;
+            var snrMargin = maxSnr - requiredSnr - MarginDb;
 
-            int computedDataRate = dataRate;
+            var computedDataRate = dataRate;
 
-            int nStep = (int)snrMargin;
+            var nStep = (int)snrMargin;
 
             while (nStep != 0)
             {
@@ -122,12 +125,12 @@ namespace LoRaTools.ADR
                 return this.pktLossToNbRep[0, currentNbRep - 1];
             }
 
-            if (pktLossRate >= 0.05 && pktLossRate < 0.10)
+            if (pktLossRate is >= 0.05 and < 0.10)
             {
                 return this.pktLossToNbRep[1, currentNbRep - 1];
             }
 
-            if (pktLossRate >= 0.10 && pktLossRate < 0.30)
+            if (pktLossRate is >= 0.10 and < 0.30)
             {
                 return this.pktLossToNbRep[2, currentNbRep - 1];
             }

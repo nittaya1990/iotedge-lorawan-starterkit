@@ -6,18 +6,18 @@ bool confirmed=false;
 //application information, should be similar to what was provisiionned in the device twins
 char * deviceId ="46AAC86800430028";
 char * devAddr ="0228B1B1";
-char * appSKey ="2B7E151628AED2A6ABF7158809CF4F3C";
-char * nwkSKey ="3B7E151628AED2A6ABF7158809CF4F3C";
+char * appSKey ="Check your device's appSKey in IoT Hub";
+char * nwkSKey ="Check your device's nwkSKey in IoT Hub";
 
 /*
-iot hub ABP desired properties for deviceid: 46AAC86800430028 
+iot hub ABP desired properties for deviceid: 46AAC86800430028
     "desired": {
-    "AppSKey": "2B7E151628AED2A6ABF7158809CF4F3C",
-    "NwkSKey": "3B7E151628AED2A6ABF7158809CF4F3C",
+    "AppSKey": "Check your device's appSKey in IoT Hub",
+    "NwkSKey": "Check your device's nwkSKey in IoT Hub",
     "DevAddr": "0228B1B1",
     "GatewayID" :"",
     "SensorDecoder" :"DecoderValueSensor",
-   
+
   */
 
 //set initial datarate and physical information for the device
@@ -34,30 +34,30 @@ int lastCall=0;
 void setup(void)
 {
     SerialUSB.begin(115200);
-    while(!SerialUSB);    
-    lora.init(); 
+    while(!SerialUSB);
+    lora.init();
 
     lora.setId(devAddr, deviceId, NULL);
     lora.setKey(nwkSKey, appSKey, NULL);
-    
+
     lora.setDeciveMode(LWABP);
     lora.setDataRate(dr, physicalType);
-   
+
     lora.setAdaptiveDataRate(true);
 
     lora.setDutyCycle(false);
     lora.setJoinDutyCycle(false);
 
-    
+
     lora.setPower(5);
-    
-   
+
+
 }
 
 
 
 void loop(void)
-{   
+{
   if((millis()-lastCall)>5000){
     lastCall=millis();
     bool result = false;
@@ -71,15 +71,15 @@ void loop(void)
       else
         result = lora.transferPacket(data, 10);
     i++;
-    
+
     if(result)
     {
         short length;
         short rssi;
-        
-        memset(buffer, 0, 256);
-        length = lora.receivePacket(buffer, 256, &rssi);
-        
+
+        memset(buffer, 0, sizeof(buffer));
+        length = lora.receivePacket(buffer, sizeof(buffer), &rssi);
+
         if(length)
         {
             SerialUSB.print("Length is: ");

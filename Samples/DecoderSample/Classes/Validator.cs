@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace SensorDecoderModule.Classes
@@ -18,12 +18,12 @@ namespace SensorDecoderModule.Classes
 
             if (payload == null)
             {
-                if (error != string.Empty)
+                if (!string.IsNullOrEmpty(error))
                     error += " and ";
                 error += "Payload missing";
             }
 
-            if (error != string.Empty)
+            if (!string.IsNullOrEmpty(error))
             {
                 throw new WebException(error);
             }

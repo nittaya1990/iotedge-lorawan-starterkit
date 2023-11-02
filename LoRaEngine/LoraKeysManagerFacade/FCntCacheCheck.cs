@@ -5,26 +5,32 @@ namespace LoraKeysManagerFacade
 {
     using System;
     using System.Threading.Tasks;
+    using LoRaTools;
+    using LoRaWan;
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.Azure.WebJobs;
     using Microsoft.Azure.WebJobs.Extensions.Http;
     using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Primitives;
 
     public class FCntCacheCheck
     {
         private readonly ILoRaDeviceCacheStore deviceCache;
+        private readonly ILogger<FCntCacheCheck> logger;
 
-        public FCntCacheCheck(ILoRaDeviceCacheStore deviceCache)
+        public FCntCacheCheck(ILoRaDeviceCacheStore deviceCache, ILogger<FCntCacheCheck> logger)
         {
             this.deviceCache = deviceCache;
+            this.logger = logger;
         }
 
         [FunctionName("NextFCntDown")]
         public async Task<IActionResult> NextFCntDownInvoke(
-            [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)]HttpRequest req,
-            ILogger log)
+            [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] HttpRequest req)
         {
+            if (req is null) throw new ArgumentNullException(nameof(req));
+
             try
             {
                 VersionValidator.Validate(req);
@@ -34,24 +40,27 @@ namespace LoraKeysManagerFacade
                 return new BadRequestObjectResult(ex.Message);
             }
 
-            string devEUI = req.Query["DevEUI"];
-            string fCntDown = req.Query["FCntDown"];
-            string fCntUp = req.Query["FCntUp"];
-            string gatewayId = req.Query["GatewayId"];
-            string abpFcntCacheReset = req.Query["ABPFcntCacheReset"];
-            uint newFCntDown = 0;
+            string rawDevEui = req.Query["DevEUI"];
+            var fCntDown = req.Query["FCntDown"];
+            var fCntUp = req.Query["FCntUp"];
+            var gatewayId = req.Query["GatewayId"];
+            var abpFcntCacheReset = req.Query["ABPFcntCacheReset"];
 
-            EUIValidator.ValidateDevEUI(devEUI);
-
-            if (!uint.TryParse(fCntUp, out uint clientFCntUp))
+            if (!DevEui.TryParse(rawDevEui, EuiParseOptions.ForbidInvalid, out var devEui))
             {
-                string errorMsg = "Missing FCntUp";
-                throw new ArgumentException(errorMsg);
+                return new BadRequestObjectResult("Dev EUI is invalid.");
             }
 
-            if (!string.IsNullOrEmpty(abpFcntCacheReset))
+            using var deviceScope = this.logger.BeginDeviceScope(devEui);
+
+            if (!uint.TryParse(fCntUp, out var clientFCntUp))
             {
-                using (var deviceCache = new LoRaDeviceCache(this.deviceCache, devEUI, gatewayId))
+                throw new ArgumentException("Missing FCntUp");
+            }
+
+            if (abpFcntCacheReset != StringValues.Empty)
+            {
+                using (var deviceCache = new LoRaDeviceCache(this.deviceCache, devEui, gatewayId))
                 {
                     if (await deviceCache.TryToLockAsync())
                     {
@@ -62,37 +71,37 @@ namespace LoraKeysManagerFacade
                             // and continued processing
                             if (deviceInfo.FCntUp > 1)
                             {
-                                log.LogDebug("Resetting cache. FCntUp: {fcntup}", deviceInfo.FCntUp);
+                                this.logger.LogDebug("Resetting cache for device {devEUI}. FCntUp: {fcntup}", devEui, deviceInfo.FCntUp);
                                 deviceCache.ClearCache();
                             }
                         }
                     }
                 }
 
-                return (ActionResult)new OkObjectResult(null);
+                return new OkObjectResult(null);
             }
 
             // validate input parameters
-            if (!uint.TryParse(fCntDown, out uint clientFCntDown) ||
-                string.IsNullOrEmpty(gatewayId))
+            if (!uint.TryParse(fCntDown, out var clientFCntDown) ||
+                StringValues.IsNullOrEmpty(gatewayId))
             {
-                string errorMsg = "Missing FCntDown or GatewayId";
+                var errorMsg = "Missing FCntDown or GatewayId";
                 throw new ArgumentException(errorMsg);
             }
 
-            newFCntDown = await this.GetNextFCntDownAsync(devEUI, gatewayId, clientFCntUp, clientFCntDown);
+            var newFCntDown = await GetNextFCntDownAsync(devEui, gatewayId, clientFCntUp, clientFCntDown);
 
-            return (ActionResult)new OkObjectResult(newFCntDown);
+            return new OkObjectResult(newFCntDown);
         }
 
-        public async Task<uint> GetNextFCntDownAsync(string devEUI, string gatewayId, uint clientFCntUp, uint clientFCntDown)
+        public async Task<uint> GetNextFCntDownAsync(DevEui devEUI, string gatewayId, uint clientFCntUp, uint clientFCntDown)
         {
             uint newFCntDown = 0;
             using (var deviceCache = new LoRaDeviceCache(this.deviceCache, devEUI, gatewayId))
             {
                 if (await deviceCache.TryToLockAsync())
                 {
-                    if (deviceCache.TryGetInfo(out DeviceCacheInfo serverStateForDeviceInfo))
+                    if (deviceCache.TryGetInfo(out var serverStateForDeviceInfo))
                     {
                         newFCntDown = ProcessExistingDeviceInfo(deviceCache, serverStateForDeviceInfo, gatewayId, clientFCntUp, clientFCntDown);
                     }
@@ -126,7 +135,7 @@ namespace LoraKeysManagerFacade
                     cachedDeviceState.FCntDown = newFCntDown;
                     cachedDeviceState.GatewayId = gatewayId;
 
-                    deviceCache.StoreInfo(cachedDeviceState);
+                    _ = deviceCache.StoreInfo(cachedDeviceState);
                 }
                 else if (clientFCntUp == cachedDeviceState.FCntUp && gatewayId == cachedDeviceState.GatewayId)
                 {
@@ -134,7 +143,7 @@ namespace LoraKeysManagerFacade
                     newFCntDown = cachedDeviceState.FCntDown + 1;
                     cachedDeviceState.FCntDown = newFCntDown;
 
-                    deviceCache.StoreInfo(cachedDeviceState);
+                    _ = deviceCache.StoreInfo(cachedDeviceState);
                 }
             }
 

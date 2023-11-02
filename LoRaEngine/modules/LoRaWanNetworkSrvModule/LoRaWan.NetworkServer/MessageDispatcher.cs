@@ -1,33 +1,38 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace LoRaWan.NetworkServer
 {
     using System;
-    using System.Collections.Generic;
+    using System.Diagnostics.Metrics;
+    using System.Threading.Tasks;
+    using LoRaTools;
     using LoRaTools.LoRaMessage;
-    using LoRaTools.Regions;
-    using LoRaTools.Utils;
     using Microsoft.Extensions.Logging;
 
     /// <summary>
     /// Message dispatcher.
     /// </summary>
-    public class MessageDispatcher
+    public sealed class MessageDispatcher : IAsyncDisposable, IMessageDispatcher
     {
         private readonly NetworkServerConfiguration configuration;
         private readonly ILoRaDeviceRegistry deviceRegistry;
         private readonly ILoRaDeviceFrameCounterUpdateStrategyProvider frameCounterUpdateStrategyProvider;
-        private volatile Region loraRegion;
-        private JoinRequestMessageHandler joinRequestHandler;
+        private readonly IJoinRequestMessageHandler joinRequestHandler;
+        private readonly ILoggerFactory loggerFactory;
+        private readonly ILogger<MessageDispatcher> logger;
+        private readonly Histogram<double> d2cMessageDeliveryLatencyHistogram;
 
         public MessageDispatcher(
             NetworkServerConfiguration configuration,
             ILoRaDeviceRegistry deviceRegistry,
             ILoRaDeviceFrameCounterUpdateStrategyProvider frameCounterUpdateStrategyProvider,
-            JoinRequestMessageHandler joinRequestHandler = null)
+            IJoinRequestMessageHandler joinRequestHandler,
+            ILoggerFactory loggerFactory,
+            ILogger<MessageDispatcher> logger,
+            Meter meter)
         {
-            this.configuration = configuration;
+            this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             this.deviceRegistry = deviceRegistry;
             this.frameCounterUpdateStrategyProvider = frameCounterUpdateStrategyProvider;
 
@@ -35,7 +40,10 @@ namespace LoRaWan.NetworkServer
             // It will take care of seeding ABP devices created here for single gateway scenarios
             this.deviceRegistry.RegisterDeviceInitializer(new FrameCounterLoRaDeviceInitializer(configuration.GatewayID, frameCounterUpdateStrategyProvider));
 
-            this.joinRequestHandler = joinRequestHandler ?? new JoinRequestMessageHandler(this.configuration, this.deviceRegistry);
+            this.joinRequestHandler = joinRequestHandler;
+            this.loggerFactory = loggerFactory;
+            this.logger = logger;
+            this.d2cMessageDeliveryLatencyHistogram = meter?.CreateHistogram<double>(MetricRegistry.D2CMessageDeliveryLatency);
         }
 
         /// <summary>
@@ -43,53 +51,43 @@ namespace LoRaWan.NetworkServer
         /// </summary>
         public void DispatchRequest(LoRaRequest request)
         {
-            if (!LoRaPayload.TryCreateLoRaPayload(request.Rxpk, out LoRaPayload loRaPayload))
+            if (request is null) throw new ArgumentNullException(nameof(request));
+
+            if (request.Payload is null)
             {
-                Logger.Log("There was a problem in decoding the Rxpk", LogLevel.Error);
-                request.NotifyFailed(LoRaDeviceRequestFailedReason.InvalidRxpk);
-                return;
+                throw new LoRaProcessingException(nameof(request.Payload), LoRaProcessingErrorCode.PayloadNotSet);
             }
 
-            if (this.loraRegion == null)
+            if (request.Region is null)
             {
-                if (!RegionManager.TryResolveRegion(request.Rxpk, out var currentRegion))
-                {
-                    // log is generated in Region factory
-                    // move here once V2 goes GA
-                    request.NotifyFailed(LoRaDeviceRequestFailedReason.InvalidRegion);
-                    return;
-                }
-
-                this.loraRegion = currentRegion;
+                throw new LoRaProcessingException(nameof(request.Region), LoRaProcessingErrorCode.RegionNotSet);
             }
 
-            request.SetPayload(loRaPayload);
-            request.SetRegion(this.loraRegion);
+            var loggingRequest = new LoggingLoRaRequest(request, this.loggerFactory.CreateLogger<LoggingLoRaRequest>(), this.d2cMessageDeliveryLatencyHistogram);
 
-            var loggingRequest = new LoggingLoRaRequest(request);
-
-            if (loRaPayload.LoRaMessageType == LoRaMessageType.JoinRequest)
+            if (request.Payload.MessageType == MacMessageType.JoinRequest)
             {
-                this.DispatchLoRaJoinRequest(loggingRequest);
+                DispatchLoRaJoinRequest(loggingRequest);
             }
-            else if (loRaPayload.LoRaMessageType == LoRaMessageType.UnconfirmedDataUp || loRaPayload.LoRaMessageType == LoRaMessageType.ConfirmedDataUp)
+            else if (request.Payload.MessageType is MacMessageType.UnconfirmedDataUp or MacMessageType.ConfirmedDataUp)
             {
-                this.DispatchLoRaDataMessage(loggingRequest);
+                DispatchLoRaDataMessage(loggingRequest);
             }
             else
             {
-                Logger.Log("Unknwon message type in rxpk, message ignored", LogLevel.Error);
+                this.logger.LogError("Unknwon message type in rxpk, message ignored");
             }
         }
 
         private void DispatchLoRaJoinRequest(LoggingLoRaRequest request) => this.joinRequestHandler.DispatchRequest(request);
 
-        void DispatchLoRaDataMessage(LoRaRequest request)
+        private void DispatchLoRaDataMessage(LoRaRequest request)
         {
             var loRaPayload = (LoRaPayloadData)request.Payload;
-            if (!this.IsValidNetId(loRaPayload))
+            using var scope = this.logger.BeginDeviceAddressScope(loRaPayload.DevAddr);
+            if (!IsValidNetId(loRaPayload.DevAddr))
             {
-                Logger.Log(ConversionHelper.ByteArrayToString(loRaPayload.DevAddr), $"device is using another network id, ignoring this message (network: {this.configuration.NetId}, devAddr: {loRaPayload.GetDevAddrNetID()})", LogLevel.Debug);
+                this.logger.LogDebug($"device is using another network id, ignoring this message (network: {this.configuration.NetId}, devAddr: {loRaPayload.DevAddr.NetworkId})");
                 request.NotifyFailed(LoRaDeviceRequestFailedReason.InvalidNetId);
                 return;
             }
@@ -97,25 +95,24 @@ namespace LoRaWan.NetworkServer
             this.deviceRegistry.GetLoRaRequestQueue(request).Queue(request);
         }
 
-        bool IsValidNetId(LoRaPayloadData loRaPayload)
+        private bool IsValidNetId(DevAddr devAddr)
         {
             // Check if the current dev addr is in our network id
-            byte devAddrNwkid = loRaPayload.GetDevAddrNetID();
-            var netIdBytes = BitConverter.GetBytes(this.configuration.NetId);
-            devAddrNwkid = (byte)(devAddrNwkid >> 1);
-            if (devAddrNwkid == (netIdBytes[0] & 0b01111111))
+            var devAddrNwkid = devAddr.NetworkId;
+            if (devAddrNwkid == this.configuration.NetId.NetworkId)
             {
                 return true;
             }
 
             // If not, check if the devaddr is part of the allowed dev address list
-            var currentDevAddr = ConversionHelper.ByteArrayToString(loRaPayload.DevAddr);
-            if (this.configuration.AllowedDevAddresses != null && this.configuration.AllowedDevAddresses.Contains(currentDevAddr))
+            if (this.configuration.AllowedDevAddresses != null && this.configuration.AllowedDevAddresses.Contains(devAddr))
             {
                 return true;
             }
 
             return false;
         }
+
+        public ValueTask DisposeAsync() => this.deviceRegistry.DisposeAsync();
     }
 }

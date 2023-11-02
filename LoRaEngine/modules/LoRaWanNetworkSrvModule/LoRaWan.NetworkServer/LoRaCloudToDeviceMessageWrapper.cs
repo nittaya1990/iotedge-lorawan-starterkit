@@ -10,10 +10,9 @@ namespace LoRaWan.NetworkServer
     using LoRaTools;
     using LoRaTools.CommonAPI;
     using Microsoft.Azure.Devices.Client;
-    using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
 
-    class LoRaCloudToDeviceMessageWrapper : IReceivedLoRaCloudToDeviceMessage
+    internal class LoRaCloudToDeviceMessageWrapper : IReceivedLoRaCloudToDeviceMessage
     {
         private readonly LoRaDevice loRaDevice;
         private readonly Message message;
@@ -25,7 +24,7 @@ namespace LoRaWan.NetworkServer
             this.loRaDevice = loRaDevice ?? throw new ArgumentNullException(nameof(loRaDevice));
             this.message = message ?? throw new ArgumentNullException(nameof(message));
 
-            this.ParseMessage();
+            ParseMessage();
         }
 
         /// <summary>
@@ -33,18 +32,17 @@ namespace LoRaWan.NetworkServer
         /// </summary>
         private void ParseMessage()
         {
-            string json = string.Empty;
             var bytes = this.message.GetBytes();
             if (bytes?.Length > 0)
             {
-                json = Encoding.UTF8.GetString(bytes);
+                var json = Encoding.UTF8.GetString(bytes);
                 try
                 {
                     this.parseCloudToDeviceMessage = JsonConvert.DeserializeObject<ReceivedLoRaCloudToDeviceMessage>(json);
                 }
-                catch (Exception ex) when (ex is JsonReaderException || ex is JsonSerializationException)
+                catch (Exception ex) when (ex is JsonReaderException or JsonSerializationException)
                 {
-                    this.invalidErrorMessage = $"could not parse cloud to device message: {json}";
+                    this.invalidErrorMessage = $"could not parse cloud to device message: {json}: {ex.Message}";
                 }
             }
             else
@@ -53,13 +51,7 @@ namespace LoRaWan.NetworkServer
             }
         }
 
-        public byte Fport
-        {
-            get
-            {
-                return this.parseCloudToDeviceMessage?.Fport ?? 0;
-            }
-        }
+        public FramePort Fport => this.parseCloudToDeviceMessage?.Fport ?? 0;
 
         public bool Confirmed
         {
@@ -74,14 +66,14 @@ namespace LoRaWan.NetworkServer
 
         public string MessageId => this.parseCloudToDeviceMessage?.MessageId ?? this.message.MessageId;
 
-        public string DevEUI => this.loRaDevice.DevEUI;
+        public DevEui? DevEUI => this.loRaDevice.DevEUI;
 
         public byte[] GetPayload()
         {
             if (this.parseCloudToDeviceMessage != null)
                 return this.parseCloudToDeviceMessage.GetPayload();
 
-            return new byte[0];
+            return Array.Empty<byte>();
         }
 
         public IList<MacCommand> MacCommands

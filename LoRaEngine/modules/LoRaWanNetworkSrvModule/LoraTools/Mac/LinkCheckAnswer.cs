@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace LoRaTools
@@ -13,10 +13,10 @@ namespace LoRaTools
     public class LinkCheckAnswer : MacCommand
     {
         [JsonProperty("margin")]
-        public uint Margin { get; set; }
+        public byte Margin { get; set; }
 
         [JsonProperty("gwCnt")]
-        public uint GwCnt { get; set; }
+        public byte GwCnt { get; set; }
 
         public override int Length => 3;
 
@@ -24,34 +24,33 @@ namespace LoRaTools
         /// Initializes a new instance of the <see cref="LinkCheckAnswer"/> class.
         /// Upstream Constructor.
         /// </summary>
-        public LinkCheckAnswer(uint margin, uint gwCnt)
+        public LinkCheckAnswer(byte margin, byte gwCnt)
         {
-            this.Margin = margin;
-            this.GwCnt = gwCnt;
-            this.Cid = CidEnum.LinkCheckCmd;
+            Margin = margin;
+            GwCnt = gwCnt;
+            Cid = Cid.LinkCheckCmd;
         }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="LinkCheckAnswer"/> class.
-        /// Test Constructor.
         /// </summary>
         public LinkCheckAnswer(ReadOnlySpan<byte> input)
         {
-            this.Cid = (CidEnum)input[2];
-            this.Margin = (uint)input[1];
-            this.GwCnt = (uint)input[0];
+            Cid = (Cid)input[0];
+            Margin = input[1];
+            GwCnt = input[2];
         }
 
         public override IEnumerable<byte> ToBytes()
         {
-            yield return (byte)this.GwCnt;
-            yield return (byte)this.Margin;
-            yield return (byte)this.Cid;
+            yield return (byte)Cid;
+            yield return Margin;
+            yield return GwCnt;
         }
 
         public override string ToString()
         {
-            return $"Type: {this.Cid} Answer, margin: {this.Margin}, gateway count: {this.GwCnt}";
+            return $"Type: {Cid} Answer, margin: {Margin}, gateway count: {GwCnt}";
         }
     }
 }

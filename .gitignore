@@ -296,9 +296,18 @@ Doc
 appsettings.local.json
 Docs/.DS_Store
 .DS_Store
-
+.env
+config
+local.settings.json
 
 Tools/Cli-LoRa-Device-Provisioning/settings\.local\.json
 
-#codecs 
+# test coverage output
+*.cobertura.xml
+
+#codecs
 **/codecs
+
+Tools/BasicStation-Certificates-Generation/ca
+Tools/BasicStation-Certificates-Generation/client
+Tools/BasicStation-Certificates-Generation/server

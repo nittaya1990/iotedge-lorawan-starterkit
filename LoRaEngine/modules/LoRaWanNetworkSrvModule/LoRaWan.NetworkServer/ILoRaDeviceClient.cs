@@ -5,6 +5,7 @@ namespace LoRaWan.NetworkServer
 {
     using System;
     using System.Collections.Generic;
+    using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.Azure.Devices.Client;
     using Microsoft.Azure.Devices.Shared;
@@ -13,12 +14,12 @@ namespace LoRaWan.NetworkServer
     /// LoRa device client contract
     /// Defines the iteractions between a LoRa device and a IoT service (Azure IoT Hub).
     /// </summary>
-    public interface ILoRaDeviceClient : IDisposable
+    public interface ILoRaDeviceClient : IAsyncDisposable
     {
         /// <summary>
         /// Gets the twin properties for the device.
         /// </summary>
-        Task<Twin> GetTwinAsync();
+        Task<Twin> GetTwinAsync(CancellationToken cancellationToken);
 
         /// <summary>
         /// Sends a telemetry/event.
@@ -28,7 +29,7 @@ namespace LoRaWan.NetworkServer
         /// <summary>
         /// Updates the device reported properties.
         /// </summary>
-        Task<bool> UpdateReportedPropertiesAsync(TwinCollection reportedProperties);
+        Task<bool> UpdateReportedPropertiesAsync(TwinCollection reportedProperties, CancellationToken cancellationToken);
 
         /// <summary>
         /// Receive a cloud to device message.
@@ -51,13 +52,13 @@ namespace LoRaWan.NetworkServer
         Task<bool> RejectAsync(Message cloudToDeviceMessage);
 
         /// <summary>
-        /// Disconnects device client.
-        /// </summary>
-        bool Disconnect();
-
-        /// <summary>
         /// Ensures the device client is connected.
         /// </summary>
         bool EnsureConnected();
+
+        /// <summary>
+        /// Disconnects device client.
+        /// </summary>
+        Task DisconnectAsync(CancellationToken cancellationToken);
     }
 }

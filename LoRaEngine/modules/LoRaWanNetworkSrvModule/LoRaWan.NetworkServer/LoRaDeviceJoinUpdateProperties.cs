@@ -10,21 +10,21 @@ namespace LoRaWan.NetworkServer
     /// </summary>
     public class LoRaDeviceJoinUpdateProperties
     {
-        public string AppSKey { get; set; }
+        public AppSessionKey AppSKey { get; set; }
 
-        public string NwkSKey { get; set; }
+        public NetworkSessionKey NwkSKey { get; set; }
 
-        public string DevAddr { get; set; }
+        public DevAddr DevAddr { get; set; }
 
-        public string NetID { get; set; }
+        public NetId NetId { get; set; }
 
-        public string DevNonce { get; set; }
+        public DevNonce DevNonce { get; set; }
 
         public LoRaRegionType Region { get; set; }
 
         public string PreferredGatewayID { get; set; }
 
-        public string AppNonce { get; set; }
+        public AppNonce AppNonce { get; set; }
 
         /// <summary>
         /// Gets or sets value indicating if region should be saved in reported properties.
@@ -35,5 +35,12 @@ namespace LoRaWan.NetworkServer
         /// Gets or sets value indicating if preferred gateway should be saved in reported properties.
         /// </summary>
         public bool SavePreferredGateway { get; set; }
+
+        /// <summary>
+        /// Gets or sets value indicating the join channel plan for region CN470.
+        /// </summary>
+        public int? CN470JoinChannel { get; set; }
+
+        public StationEui StationEui { get; set; }
     }
 }

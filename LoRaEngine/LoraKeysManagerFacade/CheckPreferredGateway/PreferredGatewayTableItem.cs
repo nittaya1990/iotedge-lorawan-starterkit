@@ -7,19 +7,19 @@ namespace LoraKeysManagerFacade
     {
         public string GatewayID { get; private set; }
 
-        public int Rssi { get; private set; }
+        public double Rssi { get; private set; }
 
-        public PreferredGatewayTableItem(string gatewayID, int rssi)
+        public PreferredGatewayTableItem(string gatewayID, double rssi)
         {
-            this.GatewayID = gatewayID;
-            this.Rssi = rssi;
+            GatewayID = gatewayID;
+            Rssi = rssi;
         }
 
         /// <summary>
         /// Creates a string representation of the object for caching.
         /// </summary>
         /// <returns>A string containing {GatewayID};{Rssi}.</returns>
-        public string ToCachedString() => string.Concat(this.GatewayID, ";", this.Rssi);
+        public string ToCachedString() => string.Concat(GatewayID, ";", Rssi);
 
         /// <summary>
         /// Creates a <see cref="PreferredGatewayTableItem"/> from a string
@@ -34,7 +34,7 @@ namespace LoraKeysManagerFacade
             if (values?.Length != 2)
                 return null;
 
-            if (!int.TryParse(values[1], out var rssi))
+            if (!double.TryParse(values[1], out var rssi))
                 return null;
 
             return new PreferredGatewayTableItem(values[0], rssi);

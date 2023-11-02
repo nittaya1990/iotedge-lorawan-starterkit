@@ -4,14 +4,14 @@
 bool confirmed=false;
 //application information, should be similar to what was provisiionned in the device twins
 char * deviceId ="47AAC86800430028";
-char * appKey="8AFE71A145B253E49C3031AD068277A1";
+char * appKey="Check your device's AppKey in IoT Hub";
 char* appEui ="BE7A0000000014E2";
 
 /*
-iot hub OTAA desired properties for deviceid: 47AAC86800430028 
+iot hub OTAA desired properties for deviceid: 47AAC86800430028
       "desired": {
       "AppEUI": "BE7A0000000014E2",
-      "AppKey": "8AFE71A145B253E49C3031AD068277A1",
+      "AppKey": "Check your device's AppKey in IoT Hub",
       "GatewayID" :"",
       "SensorDecoder" :"DecoderValueSensor"
       },
@@ -31,29 +31,29 @@ int lastCall=0;
 void setup(void)
 {
     SerialUSB.begin(115200);
-    while(!SerialUSB);    
-    lora.init();    
+    while(!SerialUSB);
+    lora.init();
     lora.setId(NULL,deviceId , appEui);
     lora.setKey(NULL, NULL, appKey);
-    
+
     lora.setDeciveMode(LWOTAA);
     lora.setDataRate(dr, physicalType);
-    
 
-    
+
+
   lora.setAdaptiveDataRate(false);
 
   lora.setDutyCycle(false);
   lora.setJoinDutyCycle(false);
 
-    
+
     lora.setPower(14);
-    
+
     while(!lora.setOTAAJoin(JOIN,20000));
 }
 
 void loop(void)
-{   
+{
   if((millis()-lastCall)>5000){
     lastCall=millis();
     bool result = false;
@@ -67,15 +67,15 @@ void loop(void)
       else
         result = lora.transferPacket(data, 10);
     i++;
-    
+
     if(result)
     {
         short length;
         short rssi;
-        
-        memset(buffer, 0, 256);
-        length = lora.receivePacket(buffer, 256, &rssi);
-        
+
+        memset(buffer, 0, sizeof(buffer));
+        length = lora.receivePacket(buffer, sizeof(buffer), &rssi);
+
         if(length)
         {
             SerialUSB.print("Length is: ");

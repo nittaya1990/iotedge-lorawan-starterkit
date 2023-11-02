@@ -1,14 +1,18 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace LoRaWan.NetworkServer
 {
     using System;
     using System.Collections.Generic;
+    using System.Diagnostics.Metrics;
+    using System.Linq;
+    using System.Net.Http;
     using System.Text;
+    using System.Text.Json;
+    using System.Threading;
     using System.Threading.Tasks;
-    using LoRaTools.ADR;
-    using LoRaWan.NetworkServer.ADR;
+    using LoRaTools.CommonAPI;
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
 
@@ -17,28 +21,38 @@ namespace LoRaWan.NetworkServer
     /// </summary>
     public sealed class LoRaDeviceAPIService : LoRaDeviceAPIServiceBase
     {
-        private readonly IServiceFacadeHttpClientProvider serviceFacadeHttpClientProvider;
+        private const string PrimaryKeyPropertyName = "PrimaryKey";
+        private readonly IHttpClientFactory httpClientFactory;
+        private readonly ILogger<LoRaDeviceAPIService> logger;
+        private readonly Counter<int> deviceLoadRequests;
 
-        public LoRaDeviceAPIService(NetworkServerConfiguration configuration, IServiceFacadeHttpClientProvider serviceFacadeHttpClientProvider)
+        public LoRaDeviceAPIService(NetworkServerConfiguration configuration,
+                                    IHttpClientFactory httpClientFactory,
+                                    ILogger<LoRaDeviceAPIService> logger,
+                                    Meter meter)
             : base(configuration)
         {
-            this.serviceFacadeHttpClientProvider = serviceFacadeHttpClientProvider;
+            if (meter is null) throw new ArgumentNullException(nameof(meter));
+
+            this.httpClientFactory = httpClientFactory;
+            this.logger = logger;
+            this.deviceLoadRequests = meter.CreateCounter<int>(MetricRegistry.DeviceLoadRequests);
         }
 
-        public override async Task<uint> NextFCntDownAsync(string devEUI, uint fcntDown, uint fcntUp, string gatewayId)
+        public override async Task<uint> NextFCntDownAsync(DevEui devEUI, uint fcntDown, uint fcntUp, string gatewayId)
         {
-            Logger.Log(devEUI, $"syncing FCntDown for multigateway", LogLevel.Debug);
+            this.logger.LogDebug("syncing FCntDown for multigateway");
 
-            var client = this.serviceFacadeHttpClientProvider.GetHttpClient();
-            var url = $"{this.URL}NextFCntDown?code={this.AuthCode}&DevEUI={devEUI}&FCntDown={fcntDown}&FCntUp={fcntUp}&GatewayId={gatewayId}";
+            using var client = CreateClient();
+            var url = GetFullUri($"NextFCntDown?code={AuthCode}&DevEUI={devEUI}&FCntDown={fcntDown}&FCntUp={fcntUp}&GatewayId={gatewayId}");
             var response = await client.GetAsync(url);
             if (!response.IsSuccessStatusCode)
             {
-                Logger.Log(devEUI, $"error calling the NextFCntDown function, check the function log. {response.ReasonPhrase}", LogLevel.Error);
+                this.logger.LogError($"error calling the NextFCntDown function, check the function log. {response.ReasonPhrase}");
                 return 0;
             }
 
-            string fcntDownString = await response.Content.ReadAsStringAsync();
+            var fcntDownString = await response.Content.ReadAsStringAsync();
 
             if (ushort.TryParse(fcntDownString, out var newFCntDown))
                 return newFCntDown;
@@ -46,34 +60,18 @@ namespace LoRaWan.NetworkServer
             return 0;
         }
 
-        public override async Task<DeduplicationResult> CheckDuplicateMsgAsync(string devEUI, uint fcntUp, string gatewayId, uint fcntDown)
+        public override async Task<FunctionBundlerResult> ExecuteFunctionBundlerAsync(DevEui devEUI, FunctionBundlerRequest request)
         {
-            var client = this.serviceFacadeHttpClientProvider.GetHttpClient();
-            var url = $"{this.URL}DuplicateMsgCheck/{devEUI}?code={this.AuthCode}&FCntUp={fcntUp}&GatewayId={gatewayId}&FCntDown={fcntDown}";
-
-            var response = await client.GetAsync(url);
-            if (!response.IsSuccessStatusCode)
-            {
-                Logger.Log(devEUI, $"error calling the DuplicateMsgCheck function, check the function log. {response.ReasonPhrase}", LogLevel.Error);
-                return null;
-            }
-
-            var payload = await response.Content.ReadAsStringAsync();
-            Logger.Log(devEUI, $"deduplication response: '{payload}'", LogLevel.Debug);
-            return JsonConvert.DeserializeObject<DeduplicationResult>(payload);
-        }
-
-        public override async Task<FunctionBundlerResult> ExecuteFunctionBundlerAsync(string devEUI, FunctionBundlerRequest request)
-        {
-            var client = this.serviceFacadeHttpClientProvider.GetHttpClient();
-            var url = $"{this.URL}FunctionBundler/{devEUI}?code={this.AuthCode}";
+            using var client = CreateClient();
+            var url = GetFullUri($"FunctionBundler/{devEUI}?code={AuthCode}");
 
             var requestBody = JsonConvert.SerializeObject(request);
 
-            var response = await client.PostAsync(url, PreparePostContent(requestBody));
+            using var content = PreparePostContent(requestBody);
+            using var response = await client.PostAsync(url, content);
             if (!response.IsSuccessStatusCode)
             {
-                Logger.Log(devEUI, $"error calling the bundling function, check the function log. {response.ReasonPhrase}", LogLevel.Error);
+                this.logger.LogError($"error calling the bundling function, check the function log. {response.ReasonPhrase}");
                 return null;
             }
 
@@ -81,14 +79,14 @@ namespace LoRaWan.NetworkServer
             return JsonConvert.DeserializeObject<FunctionBundlerResult>(payload);
         }
 
-        public override async Task<bool> ABPFcntCacheResetAsync(string devEUI, uint fcntUp, string gatewayId)
+        public override async Task<bool> ABPFcntCacheResetAsync(DevEui devEUI, uint fcntUp, string gatewayId)
         {
-            var client = this.serviceFacadeHttpClientProvider.GetHttpClient();
-            var url = $"{this.URL}NextFCntDown?code={this.AuthCode}&DevEUI={devEUI}&ABPFcntCacheReset=true&GatewayId={gatewayId}&FCntUp={fcntUp}";
+            using var client = CreateClient();
+            var url = GetFullUri($"NextFCntDown?code={AuthCode}&DevEUI={devEUI}&ABPFcntCacheReset=true&GatewayId={gatewayId}&FCntUp={fcntUp}");
             var response = await client.GetAsync(url);
             if (!response.IsSuccessStatusCode)
             {
-                Logger.Log(devEUI, $"error calling the NextFCntDown function, check the function log, {response.ReasonPhrase}", LogLevel.Error);
+                this.logger.LogError($"error calling the NextFCntDown function, check the function log, {response.ReasonPhrase}");
                 return false;
             }
 
@@ -96,55 +94,33 @@ namespace LoRaWan.NetworkServer
         }
 
         /// <inheritdoc />
-        public sealed override Task<SearchDevicesResult> SearchAndLockForJoinAsync(string gatewayID, string devEUI, string appEUI, string devNonce)
-            => this.SearchDevicesAsync(gatewayID: gatewayID, devEUI: devEUI, appEUI: appEUI, devNonce: devNonce);
+        public sealed override Task<SearchDevicesResult> SearchAndLockForJoinAsync(string gatewayID, DevEui devEUI, DevNonce devNonce)
+            => SearchDevicesAsync(gatewayID: gatewayID, devEui: devEUI, devNonce: devNonce);
 
         /// <inheritdoc />
-        public sealed override Task<SearchDevicesResult> SearchByDevAddrAsync(string devAddr)
-            => this.SearchDevicesAsync(devAddr: devAddr);
+        public sealed override Task<SearchDevicesResult> SearchByDevAddrAsync(DevAddr devAddr)
+            => SearchDevicesAsync(devAddr: devAddr);
 
         /// <summary>
         /// Helper method that calls the API GetDevice method.
         /// </summary>
-        async Task<SearchDevicesResult> SearchDevicesAsync(string gatewayID = null, string devAddr = null, string devEUI = null, string appEUI = null, string devNonce = null)
+        private async Task<SearchDevicesResult> SearchDevicesAsync(string gatewayID = null, DevAddr? devAddr = null, DevEui? devEui = null, string appEUI = null, DevNonce? devNonce = null)
         {
-            var client = this.serviceFacadeHttpClientProvider.GetHttpClient();
-            var url = new StringBuilder();
-            url.Append(this.URL)
-                .Append("GetDevice?code=")
-                .Append(this.AuthCode);
+            this.deviceLoadRequests?.Add(1);
 
-            if (!string.IsNullOrEmpty(gatewayID))
+            using var client = CreateClient();
+
+            var url = BuildUri("GetDevice", new Dictionary<string, string>
             {
-                url.Append("&GatewayId=")
-                    .Append(gatewayID);
-            }
+                ["code"] = AuthCode,
+                ["GateWayId"] = gatewayID,
+                ["DevAddr"] = devAddr?.ToString(),
+                ["DevEUI"] = devEui?.ToString(),
+                ["AppEUI"] = appEUI,
+                ["DevNonce"] = devNonce?.ToString()
+            });
 
-            if (!string.IsNullOrEmpty(devAddr))
-            {
-                url.Append("&DevAddr=")
-                    .Append(devAddr);
-            }
-
-            if (!string.IsNullOrEmpty(devEUI))
-            {
-                url.Append("&DevEUI=")
-                    .Append(devEUI);
-            }
-
-            if (!string.IsNullOrEmpty(appEUI))
-            {
-                url.Append("&AppEUI=")
-                    .Append(appEUI);
-            }
-
-            if (!string.IsNullOrEmpty(devNonce))
-            {
-                url.Append("&DevNonce=")
-                    .Append(devNonce);
-            }
-
-            var response = await client.GetAsync(url.ToString());
+            var response = await client.GetAsync(url);
             if (!response.IsSuccessStatusCode)
             {
                 if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
@@ -168,7 +144,7 @@ namespace LoRaWan.NetworkServer
                     }
                 }
 
-                Logger.Log(devAddr, $"error calling get device function api: {response.ReasonPhrase}, status: {response.StatusCode}, check the azure function log", LogLevel.Error);
+                this.logger.LogError($"{devAddr} error calling get device function api: {response.ReasonPhrase}, status: {response.StatusCode}, check the azure function log");
 
                 // TODO: FBE check if we return null or throw exception
                 return new SearchDevicesResult();
@@ -180,36 +156,127 @@ namespace LoRaWan.NetworkServer
         }
 
         /// <inheritdoc />
-        public override async Task<SearchDevicesResult> SearchByDevEUIAsync(string devEUI)
+        public override Task<string> GetPrimaryKeyByEuiAsync(DevEui eui) =>
+            GetPrimaryKeyByEuiAsync(eui.ToString());
+
+        /// <inheritdoc />
+        public override Task<string> GetPrimaryKeyByEuiAsync(StationEui eui) =>
+            GetPrimaryKeyByEuiAsync(eui.ToString());
+
+        private async Task<string> GetPrimaryKeyByEuiAsync(string eui)
         {
-            var client = this.serviceFacadeHttpClientProvider.GetHttpClient();
-            var url = new StringBuilder();
-            url.Append(this.URL)
-                .Append("GetDeviceByDevEUI?code=")
-                .Append(this.AuthCode);
+            this.deviceLoadRequests?.Add(1);
 
-            if (!string.IsNullOrEmpty(devEUI))
+            using var client = CreateClient();
+            var url = BuildUri("GetDeviceByDevEUI", new Dictionary<string, string>
             {
-                url.Append("&DevEUI=")
-                    .Append(devEUI);
-            }
+                ["code"] = AuthCode,
+                ["DevEUI"] = eui
+            });
 
-            var response = await client.GetAsync(url.ToString());
+            var response = await client.GetAsync(url);
             if (!response.IsSuccessStatusCode)
             {
                 if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
                 {
-                    return new SearchDevicesResult();
+                    return default;
                 }
 
-                Logger.Log(devEUI, $"error calling get device by devEUI api: {response.ReasonPhrase}, status: {response.StatusCode}, check the azure function log", LogLevel.Error);
+                this.logger.LogError($"error calling get device/station by EUI api: {response.ReasonPhrase}, status: {response.StatusCode}, check the azure function log");
 
-                return new SearchDevicesResult();
+                return default;
             }
 
-            var result = await response.Content.ReadAsStringAsync();
-            var devices = (List<IoTHubDeviceInfo>)JsonConvert.DeserializeObject(result, typeof(List<IoTHubDeviceInfo>));
-            return new SearchDevicesResult(devices);
+            return await response.Content.ReadAsStringAsync() is { Length: > 0 } json
+                   && JsonDocument.Parse(json).RootElement is { ValueKind: JsonValueKind.Object } root
+                   && root.EnumerateObject()
+                          .FirstOrDefault(p => PrimaryKeyPropertyName.Equals(p.Name, StringComparison.OrdinalIgnoreCase)) is { Value.ValueKind: JsonValueKind.String } property
+                   ? property.Value.GetString()
+                   : null;
+        }
+
+        internal Uri GetFullUri(string relativePath)
+        {
+            // If base URL does not end with a slash, the relative path component is discarded.
+            // https://docs.microsoft.com/en-us/dotnet/api/system.uri.-ctor?view=net-5.0#System_Uri__ctor_System_Uri_System_String_
+            var baseUrl = URL.OriginalString.EndsWith('/') ? URL : new Uri($"{URL.OriginalString}/");
+            return new Uri(baseUrl, relativePath);
+        }
+
+        internal Uri BuildUri(string relativePath, IDictionary<string, string> queryParameters)
+        {
+            var baseUrl = GetFullUri(relativePath);
+
+            var queryParameterSb = new StringBuilder(relativePath);
+            queryParameterSb = queryParameters
+                .Where(qp => !string.IsNullOrEmpty(qp.Value))
+                .Select((qp, i) => $"{(i == 0 ? "?" : "&")}{qp.Key}={qp.Value}")
+                .Aggregate(queryParameterSb, (sb, qp) => sb.Append(qp));
+
+            return new Uri(baseUrl, queryParameterSb.ToString());
+        }
+
+        public override async Task<string> FetchStationCredentialsAsync(StationEui eui, ConcentratorCredentialType credentialtype, CancellationToken token)
+        {
+            using var client = CreateClient();
+            var url = BuildUri("FetchConcentratorCredentials", new Dictionary<string, string>
+            {
+                ["code"] = AuthCode,
+                ["StationEui"] = eui.ToString(),
+                ["CredentialType"] = credentialtype.ToString()
+            });
+
+            var response = await client.GetAsync(url, token);
+            if (!response.IsSuccessStatusCode)
+            {
+                if (response.StatusCode is not System.Net.HttpStatusCode.NotFound)
+                {
+                    this.logger.LogError($"error calling fetch station credentials api: {response.ReasonPhrase}, status: {response.StatusCode}, content: {response.Content}, check the azure function log");
+                }
+
+                return string.Empty;
+            }
+
+            return await response.Content.ReadAsStringAsync(token);
+        }
+
+        public override async Task<HttpContent> FetchStationFirmwareAsync(StationEui eui, CancellationToken token)
+        {
+            using var client = CreateClient();
+            var url = BuildUri("FetchConcentratorFirmware", new Dictionary<string, string>
+            {
+                ["code"] = AuthCode,
+                ["StationEui"] = eui.ToString()
+            });
+
+            var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token);
+            if (!response.IsSuccessStatusCode)
+            {
+                this.logger.LogError($"error calling fetch station firmware api: {response.ReasonPhrase}, status: {response.StatusCode}, content {response.Content}, check the azure function log");
+            }
+
+            return response.Content;
+        }
+
+        private HttpClient CreateClient() => this.httpClientFactory.CreateClient(LoRaApiHttpClient.Name);
+
+        public override async Task SendJoinNotificationAsync(DeviceJoinNotification deviceJoinNotification, CancellationToken token)
+        {
+            using var client = CreateClient();
+            const string FunctionName = "DeviceJoinNotification";
+            var url = BuildUri(FunctionName, new Dictionary<string, string>
+            {
+                ["code"] = AuthCode
+            });
+
+            var requestBody = JsonConvert.SerializeObject(deviceJoinNotification);
+
+            using var content = PreparePostContent(requestBody);
+            using var response = await client.PostAsync(url, content, token);
+            if (!response.IsSuccessStatusCode)
+            {
+                this.logger.LogError($"error calling the {FunctionName} function, check the function log. {response.ReasonPhrase}");
+            }
         }
     }
 }

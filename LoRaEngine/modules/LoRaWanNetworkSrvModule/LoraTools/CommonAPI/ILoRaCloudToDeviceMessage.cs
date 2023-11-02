@@ -1,18 +1,19 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace LoRaTools.CommonAPI
 {
     using System.Collections.Generic;
+    using LoRaWan;
 
     /// <summary>
     /// Defines the data contract for cloud to device messages.
     /// </summary>
     public interface ILoRaCloudToDeviceMessage
     {
-        string DevEUI { get; }
+        DevEui? DevEUI { get; }
 
-        byte Fport { get; }
+        public FramePort Fport { get; }
 
         bool Confirmed { get; }
 

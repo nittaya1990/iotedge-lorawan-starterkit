@@ -1,21 +1,20 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>$(TargetFramework)</TargetFramework>
   </PropertyGroup>
-
   <ItemGroup>
-    <PackageReference Include="Microsoft.Azure.Devices.Client" Version="1.37.1" />
+    <PackageReference Include="Microsoft.Azure.Devices.Client" Version="$(MicrosoftAzureDevicesClientVersion)" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="$(MicrosoftExtensionsDependencyInjectionVersion)" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="$(MicrosoftExtensionsLogging)" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Configuration" Version="$(MicrosoftExtensionsLoggingConfiguration)" />
+    <PackageReference Include="Microsoft.Extensions.Primitives" Version="$(MicrosoftExtensionsPrimitivesVersion)" />
+    <PackageReference Include="Nullable" Version="$(NullablePkg)">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
-
-  <!-- StyleCop Setup -->
   <ItemGroup>
-    <AdditionalFiles Include="../../../../stylecop.json" Link="stylecop.json" />
+    <ProjectReference Include="..\LoRaWan\LoRaWan.csproj" />
   </ItemGroup>
-  <PropertyGroup>
-    <CodeAnalysisRuleSet>../../../../stylecop.ruleset</CodeAnalysisRuleSet>
-  </PropertyGroup>
-  <Import Project="../../../../stylecop.props" />
-  
-
 </Project>

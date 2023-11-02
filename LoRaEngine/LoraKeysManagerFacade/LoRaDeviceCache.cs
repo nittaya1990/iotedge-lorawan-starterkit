@@ -1,11 +1,11 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace LoraKeysManagerFacade
 {
     using System;
     using System.Threading.Tasks;
-    using Microsoft.Azure.WebJobs;
+    using LoRaWan;
     using Newtonsoft.Json;
 
     public sealed class LoRaDeviceCache : IDisposable
@@ -15,20 +15,15 @@ namespace LoraKeysManagerFacade
 
         private readonly ILoRaDeviceCacheStore cacheStore;
         private readonly string gatewayId;
-        private readonly string devEUI;
+        private readonly DevEui devEUI;
         private readonly string cacheKey;
 
         public bool IsLockOwner { get; private set; }
 
         private string lockKey;
 
-        public LoRaDeviceCache(ILoRaDeviceCacheStore cacheStore, string devEUI, string gatewayId)
+        public LoRaDeviceCache(ILoRaDeviceCacheStore cacheStore, DevEui devEUI, string gatewayId)
         {
-            if (string.IsNullOrEmpty(devEUI))
-            {
-                throw new ArgumentNullException(nameof(devEUI));
-            }
-
             if (string.IsNullOrEmpty(gatewayId))
             {
                 throw new ArgumentNullException(nameof(gatewayId));
@@ -37,25 +32,25 @@ namespace LoraKeysManagerFacade
             this.cacheStore = cacheStore;
             this.devEUI = devEUI;
             this.gatewayId = gatewayId;
-            this.cacheKey = devEUI;
+            this.cacheKey = devEUI.ToString();
         }
 
         public async Task<bool> TryToLockAsync(string lockKey = null, bool block = true)
         {
-            if (this.IsLockOwner)
+            if (IsLockOwner)
             {
                 return true;
             }
 
             var lk = lockKey ?? this.devEUI + CacheKeyLockSuffix;
 
-            if (this.IsLockOwner = await this.cacheStore.LockTakeAsync(lk, this.gatewayId, LockExpiry, block))
+            if (IsLockOwner = await this.cacheStore.LockTakeAsync(lk, this.gatewayId, LockExpiry, block))
             {
                 // store the used key
                 this.lockKey = lk;
             }
 
-            return this.IsLockOwner;
+            return IsLockOwner;
         }
 
         public bool Initialize(uint fCntUp = 0, uint fCntDown = 0)
@@ -68,13 +63,12 @@ namespace LoraKeysManagerFacade
                 GatewayId = this.gatewayId
             };
 
-            return this.StoreInfo(serverStateForDeviceInfo, true);
+            return StoreInfo(serverStateForDeviceInfo, true);
         }
 
         public bool TryGetValue(out string value)
         {
-            value = null;
-            this.EnsureLockOwner();
+            EnsureLockOwner();
             value = this.cacheStore.StringGet(this.cacheKey);
             return value != null;
         }
@@ -91,8 +85,7 @@ namespace LoraKeysManagerFacade
 
         public bool TryGetInfo(out DeviceCacheInfo info)
         {
-            info = null;
-            this.EnsureLockOwner();
+            EnsureLockOwner();
 
             info = this.cacheStore.GetObject<DeviceCacheInfo>(this.cacheKey);
             return info != null;
@@ -100,30 +93,30 @@ namespace LoraKeysManagerFacade
 
         public bool StoreInfo(DeviceCacheInfo info, bool initialize = false)
         {
-            this.EnsureLockOwner();
+            EnsureLockOwner();
             return this.cacheStore.StringSet(this.cacheKey, JsonConvert.SerializeObject(info), new TimeSpan(1, 0, 0, 0), initialize);
         }
 
         public void SetValue(string value, TimeSpan? expiry = null)
         {
-            this.EnsureLockOwner();
+            EnsureLockOwner();
             if (!expiry.HasValue)
             {
                 expiry = TimeSpan.FromMinutes(1);
             }
 
-            this.cacheStore.StringSet(this.cacheKey, value, expiry);
+            _ = this.cacheStore.StringSet(this.cacheKey, value, expiry);
         }
 
         public void ClearCache()
         {
-            this.EnsureLockOwner();
-            this.cacheStore.KeyDelete(this.cacheKey);
+            EnsureLockOwner();
+            _ = this.cacheStore.KeyDelete(this.cacheKey);
         }
 
         private void EnsureLockOwner()
         {
-            if (!this.IsLockOwner)
+            if (!IsLockOwner)
             {
                 throw new InvalidOperationException($"Trying to access cache without owning the lock. Device: {this.devEUI} Gateway: {this.gatewayId}");
             }
@@ -131,7 +124,7 @@ namespace LoraKeysManagerFacade
 
         private void ReleaseLock()
         {
-            if (!this.IsLockOwner)
+            if (!IsLockOwner)
             {
                 return;
             }
@@ -142,12 +135,12 @@ namespace LoraKeysManagerFacade
                 throw new InvalidOperationException("failed to release lock");
             }
 
-            this.IsLockOwner = false;
+            IsLockOwner = false;
         }
 
         public void Dispose()
         {
-            this.ReleaseLock();
+            ReleaseLock();
         }
     }
 }

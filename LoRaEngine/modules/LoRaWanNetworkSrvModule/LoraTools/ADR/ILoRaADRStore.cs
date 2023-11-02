@@ -1,9 +1,10 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace LoRaTools.ADR
 {
     using System.Threading.Tasks;
+    using LoRaWan;
 
     /// <summary>
     /// Interface to implement to store ADR tables.
@@ -12,10 +13,10 @@ namespace LoRaTools.ADR
     {
         Task<LoRaADRTable> AddTableEntry(LoRaADRTableEntry entry);
 
-        Task UpdateADRTable(string devEUI, LoRaADRTable table);
+        Task UpdateADRTable(DevEui devEUI, LoRaADRTable table);
 
-        Task<LoRaADRTable> GetADRTable(string devEUI);
+        Task<LoRaADRTable> GetADRTable(DevEui devEUI);
 
-        Task<bool> Reset(string devEUI);
+        Task<bool> Reset(DevEui devEUI);
     }
 }

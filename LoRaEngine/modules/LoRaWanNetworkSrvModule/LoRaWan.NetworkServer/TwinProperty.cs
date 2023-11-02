@@ -1,12 +1,8 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 namespace LoRaWan.NetworkServer
 {
-    using System;
-    using System.Collections.Generic;
-    using System.Text;
-
     /// <summary>
     /// Twin properties of a <see cref="LoRaDevice"/>.
     /// </summary>
@@ -16,17 +12,18 @@ namespace LoRaWan.NetworkServer
         public const string NwkSKey = "NwkSKey";
         public const string DevAddr = "DevAddr";
         public const string DevNonce = "DevNonce";
-        public const string AppEUI = "AppEUI";
+        public const string AppEui = "AppEUI";
         public const string AppKey = "AppKey";
         public const string GatewayID = "GatewayID";
+        public const string LastProcessingStationEui = "LastProcessingStationEui";
         public const string SensorDecoder = "SensorDecoder";
         public const string FCntUp = "FCntUp";
         public const string FCntDown = "FCntDown";
         public const string DevEUI = "DevEUI";
-        public const string NetID = "NetId"; // Must be NetId to be backward compatible
+        public const string NetId = "NetId"; // Must be NetId to be backward compatible
         public const string DownlinkEnabled = "Downlink";
         public const string PreferredWindow = "PreferredWindow"; // (1 or 2)
-        public const string Deduplication = "Deduplication"; // None (default), Drop, Mark
+        public const string Deduplication = "Deduplication"; // None, Drop (default), Mark
         public const string ClassType = "ClassType";
         public const string Supports32BitFCnt = "Supports32BitFCnt";
         public const string FCntResetCounter = "FCntResetCounter";
@@ -34,6 +31,7 @@ namespace LoRaWan.NetworkServer
         // ADR stuff
         public const string DataRate = "DataRate";
         public const string TxPower = "TxPower"; // depend on region 0 - 7 EU or 0 - 14 US
+        public const string TxParam = "TxParam"; // Configuration for dwell time and EIRP
         public const string NbRep = "NbRep"; // 1 - 3
         public const string RX2DataRate = "RX2DataRate";
         public const string RX1DROffset = "RX1DROffset";
@@ -49,5 +47,13 @@ namespace LoRaWan.NetworkServer
         /// Defines the connection keep alive timeout.
         /// </summary>
         public const string KeepAliveTimeout = "KeepAliveTimeout";
+
+        /// <summary>
+        /// Defines the join channel index; applicable to CN470 region.
+        /// </summary>
+        public const string CN470JoinChannel = "CN470JoinChannel";
+
+        // Concentrator-only properties
+        public const string Package = "Package";
     }
 }
